@@ -1,0 +1,7 @@
+**/.venv
+**/node_modules
+**/__pycache__
+backend/.env
+backend/client_secret*.json
+backend/token.json
+frontend

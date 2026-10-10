@@ -26,7 +26,7 @@ server = MCPServer(
 
 
 def _app_url(sid: str) -> str:
-    return f"{settings.frontend_origin.rstrip('/')}/app/s/{sid}"
+    return f"{settings.frontend_origin.split(',')[0].strip().rstrip('/')}/app/s/{sid}"
 
 
 @server.tool()

@@ -69,3 +69,14 @@
 - Real WorkBuddy doing desk_research / report_builder (EXP-3); Google Workspace actions (needs `client_secret.json` + token); Cloud Run deploy; frontend.
 ### Pilot deviations from docs
 - REST responses are dicts, not shared Pydantic response models (one-contract rule deferred); no Alembic; full-text search only; council revision loop not run (single pass).
+
+## [2026-10-10 17:55 MYT] Frontend + deploy scripts
+### What changed
+- React/Vite frontend: landing (`/`), sessions (`/app`), live canvas workspace with SSE timeline, inspector, G1/G2 cards (`/app/s/:id`), report (`/app/s/:id/report`, raw HTML stripped).
+- Deploy: root `Dockerfile` (uv, Python 3.12, includes `knowledge/`), `.gcloudignore`, `firebase.json` (SPA rewrite), `infra/setup-cloud.ps1` (DB, user, secrets, IAM), `infra/deploy-backend.ps1` (Cloud Run `startupbuddy-api`, min=max=1, Cloud SQL socket, secrets), `infra/deploy-frontend.ps1`.
+- WorkBuddy skills v0.2: exact `mcp__startupbuddy__*` tool names; worker relays G1/G2 via `get_session_status`/`confirm_gate`; report builder returns `report_markdown` + local DOCX path (via WorkBuddy's minimax-docx skill).
+### Verified
+- `npm run build` OK; canvas renders a completed session (16 agent nodes + WorkBuddy, G2 card) in the browser pane.
+- `docker build` OK; container imports the app.
+### Still unverified
+- Cloud deploy; real WorkBuddy run of desk_research/report_builder; Google Workspace actions.
