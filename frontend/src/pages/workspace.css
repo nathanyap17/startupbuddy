@@ -103,6 +103,9 @@
 .ws3 .node.kind-problem { width: 270px; background: #fff; color: var(--text); }
 .ws3 .node.kind-problem .node-h { background: var(--brand); border-radius: .8rem .8rem 0 0; }
 .ws3 .node.kind-problem .t { color: #fff; } .ws3 .node.kind-problem .node-state { color: var(--brand-dim); }
+.ws3 .node.kind-screen { width: 240px; border-color: #b9c9da; }
+.ws3 .node.kind-screen .node-h { background: var(--surface-2); border-radius: .8rem .8rem 0 0; }
+.ws3 .node.kind-screen.st-failed .node-h { background: var(--bad-soft); }
 .ws3 .node.kind-workbuddy { border-style: dashed; background: #fbfcfe; }
 .ws3 .node.kind-council { width: 200px; }
 .ws3 .node.selected-node { outline: 2px solid var(--brand); outline-offset: 2px; }
@@ -166,6 +169,12 @@
 .score-top { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 600; color: var(--brand); }
 .bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--brand-2), var(--brand)); transition: width .8s cubic-bezier(.22, .61, .36, 1); }
+.rp-sec.blocked { border-color: #f1b8b2; background: #fff8f7; }
+.rp-sec details summary { cursor: pointer; color: var(--brand-2); font-weight: 600; }
+.rp-sec ul { margin: 4px 0 0; padding-left: 18px; }
+.fd-line.k-blocked .fd-text { color: var(--bad); font-weight: 600; }
+.fd-line.k-clarify .fd-text, .fd-line.k-followup .fd-text { color: var(--brand); font-weight: 600; }
+.fd-line.k-screen .fd-text { color: var(--ok); }
 .toggle { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; }
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .toggle .track { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--border); position: relative; transition: background .2s; flex: none; }

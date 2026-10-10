@@ -1,7 +1,7 @@
 ---
 name: startupbuddy-worker
 description: "Run StartupBuddy with WorkBuddy. Use when the user wants to start or validate a business idea in Malaysia with StartupBuddy (e.g. 'Use StartupBuddy: I want to sell kolo mee near Padungan, Kuching'), or says 'start the StartupBuddy worker'. Starts a session, then works through StartupBuddy's task queue until the run is done."
-version: 0.3.0
+version: 0.4.0
 allowed-tools: Read,Write,Bash
 ---
 
@@ -10,7 +10,8 @@ allowed-tools: Read,Write,Bash
 Requires the **startupbuddy** MCP server. Tools (exact names):
 `mcp__startupbuddy__start_session`, `mcp__startupbuddy__get_session_status`, `mcp__startupbuddy__confirm_gate`,
 `mcp__startupbuddy__await_next_task`, `mcp__startupbuddy__heartbeat_task`, `mcp__startupbuddy__submit_task_result`,
-`mcp__startupbuddy__fail_task`, `mcp__startupbuddy__upload_artifact`, `mcp__startupbuddy__ask_session`.
+`mcp__startupbuddy__fail_task`, `mcp__startupbuddy__upload_artifact`, `mcp__startupbuddy__ask_session`,
+`mcp__startupbuddy__check_followups`.
 
 ## 1. Start (if the user gave a business idea)
 1. Extract `intent` (what they want to do) and `location` (a Malaysian place). Ask once if the location is missing.
@@ -21,6 +22,10 @@ Requires the **startupbuddy** MCP server. Tools (exact names):
 Repeat:
 1. Call `await_next_task(worker_id="workbuddy-laptop", wait_s=25)`.
 2. If `task` is null: every 4th empty poll, call `get_session_status` for the session.
+   - If `gate_waiting` is `G0`: StartupBuddy needs a clarification before planning. Ask the user the
+     `clarifying_question` word for word and pass their answer with `confirm_gate(session_id, "G0", "clarify", notes=<answer>)`.
+     Never answer it yourself and never guess. If the run ends as `blocked`, explain kindly that the idea isn't legal as
+     described and mention the legal alternatives shown in the app.
    - If `gate_waiting` is `G1`: show the user the `problem_statement` and ask: confirm, or stop? Pass the answer with `confirm_gate(session_id, "G1", "approve"|"reject")`.
    - If `gate_waiting` is `G2`: list the `actions` and ask which to approve. Pass **only the ids the user approved** with `confirm_gate(session_id, "G2", "approve", action_ids=[...])`. **Never approve on the user's behalf.**
    - If `phase` is `done` or `failed`: tell the user and stop.
@@ -31,6 +36,10 @@ Repeat:
 4. For work longer than a minute, call `heartbeat_task(task_id)` about every 60 s.
 5. Call `submit_task_result(task_id, result_json)` where `result_json` is a JSON **string** matching `task.output_schema`. If `validation_errors` come back, fix them and resubmit once; otherwise call `fail_task(task_id, reason)`.
 6. Tell the user in one line what you finished, then continue the loop.
+
+## Follow-ups
+If the user says they sent an outreach email, or asks "did they reply?", call `check_followups(session_id)` and relay
+what happened (replies with a time are already in their calendar, without inviting anyone).
 
 ## Questions from the user
 If the user asks anything about their plan ("is this worth it?", "what's my break-even?"), call `ask_session(session_id, question)` and relay the reply as is. It's friendly and grounded in the session.

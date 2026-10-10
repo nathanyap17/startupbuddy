@@ -33,7 +33,7 @@ function AgentNode({ data }: NodeProps<Node<Data>>) {
         <Robot state={data.state} emoji={data.emoji} />
         <div className="node-tt">
           <div className="t">{data.title}</div>
-          <div className="node-state">{data.state === "thinking" ? "working…" : data.state === "waiting" ? "waiting for you" : data.state === "failed" ? "needs a retry" : "done"}</div>
+          <div className="node-state">{data.state === "thinking" ? "working…" : data.state === "waiting" ? "waiting for you" : data.state === "failed" ? (data.kind === "screen" ? "blocked" : "needs a retry") : "done"}</div>
         </div>
       </div>
       {loading ? (
@@ -49,7 +49,7 @@ function AgentNode({ data }: NodeProps<Node<Data>>) {
 const nodeTypes = { agent: AgentNode };
 
 const POS: Record<string, [number, number]> = {
-  problem: [0, 250], workbuddy: [0, 520],
+  screen: [-330, 250], problem: [0, 250], workbuddy: [0, 520],
   key_partners: [330, 130], key_activities: [580, 10], key_resources: [580, 250], value_propositions: [830, 130],
   customer_relationships: [1080, 10], channels: [1080, 250], customer_segments: [1330, 130],
   cost_structure: [460, 470], revenue_streams: [1080, 470],
@@ -57,7 +57,7 @@ const POS: Record<string, [number, number]> = {
   advisor: [1900, 250],
 };
 const EMOJI: Record<string, string> = {
-  problem: "🧭", workbuddy: "🤖", advisor: "🗓️", customer_segments: "👥", value_propositions: "💎", channels: "📣",
+  screen: "🛡️", problem: "🧭", workbuddy: "🤖", advisor: "🗓️", customer_segments: "👥", value_propositions: "💎", channels: "📣",
   customer_relationships: "🤝", key_activities: "🛠️", key_resources: "🧰", key_partners: "🔗", revenue_streams: "💰",
   cost_structure: "🧾", council_customer: "🛒", council_ceo: "🧑‍💼", council_investor: "📈", council_cfo: "🧮", council_mentor: "🧑‍🏫",
 };
@@ -69,6 +69,8 @@ export const SEATS = ["customer", "ceo", "investor", "cfo", "mentor"];
 
 export function deriveStates(d: SessionDetail, live: Record<string, NodeState>): Record<string, NodeState> {
   const s: Record<string, NodeState> = {};
+  s.screen = d.phase === "screening" || d.phase === "intake" ? "thinking" : d.phase === "gate_g0" ? "waiting"
+    : d.phase === "blocked" ? "failed" : d.screen ? "done" : "idle";
   s.problem = d.problem ? (d.phase === "gate_g1" ? "waiting" : "done") : ["intake", "problem"].includes(d.phase) ? "thinking" : "idle";
   for (const b of d.blocks) s[b.key] = b.status === "done" ? "done" : b.status === "failed" ? "failed" : b.status === "thinking" ? "thinking" : "idle";
   const reviewed = new Set(d.council.map((c) => c.seat));
@@ -99,7 +101,16 @@ export default function Canvas({ d, live, selected, onSelect }: {
   const { nodes, edges } = useMemo(() => {
     const sub = (k: string) => d.blocks.find((b) => b.key === k)?.content?.summary ?? "";
     const wb = d.workbuddy_tasks;
+    const sc = d.screen;
     const data: Record<string, Data> = {
+      screen: { title: "Intake Screener", emoji: EMOJI.screen,
+        sub: sc ? (sc.verdict === "ambiguous" ? sc.clarifying_question : sc.verdict === "prohibited" ? sc.refusal_reason : sc.interpretation) : "",
+        state: states.screen, kind: "screen",
+        chips: sc ? [
+          { t: sc.verdict === "prohibited" ? "Blocked" : sc.verdict === "ambiguous" ? "Needs clarity" : sc.verdict === "regulated" ? "Regulated" : "Cleared",
+            c: sc.verdict === "allowed" ? "verified" : sc.verdict === "regulated" ? "refine" : sc.verdict === "prohibited" ? "refine" : "info" },
+          { t: { physical: "Physical", digital: "Digital", hybrid: "Hybrid" }[sc.business_type], c: "info" },
+        ] : [] },
       problem: { title: "Problem Coordinator", emoji: EMOJI.problem, sub: d.problem?.statement ?? "", state: states.problem, kind: "problem",
         chips: d.problem ? [{ t: `Sourced ×${d.evidence.filter((e) => e.scope === "problem" && e.label === "sourced").length}`, c: "sourced" }] : [] },
       workbuddy: { title: "Tencent WorkBuddy", emoji: EMOJI.workbuddy,
@@ -122,6 +133,7 @@ export default function Canvas({ d, live, selected, onSelect }: {
       id, type: "agent", position: { x: POS[id][0], y: POS[id][1] }, data: { ...data[id], selected: id === selected }, draggable: true,
     }));
     const e: [string, string][] = [];
+    e.push(["screen", "problem"]);
     WAVE1.forEach((t) => e.push(["problem", t]));
     WAVE2.forEach((t) => WAVE1.forEach((s) => e.push([s, t])));
     WAVE3.forEach((t) => WAVE2.forEach((s) => e.push([s, t])));

@@ -20,12 +20,13 @@ lease expires → re-queued (attempts+1, max 2) · deadline passes → status=ex
 |---|---|---|---|
 | `start_session` | `intent: str`, `location: str` | `{session_id, app_url}` | Entry point for "one prompt" from WorkBuddy. Kicks off Phase 1 |
 | `get_session_status` | `session_id` | `{phase, gate, progress, app_url}` | For WorkBuddy to tell the user where things are |
-| `confirm_gate` | `session_id`, `gate: G1\|G2`, `decision: approve\|edit\|reject`, `notes?`, `action_ids?: list[str]` | `{ok}` | Same effect as the web buttons; G2 requires explicit action ids |
+| `confirm_gate` | `session_id`, `gate: G0\|G1\|G2`, `decision: approve\|edit\|reject\|clarify`, `notes?`, `action_ids?: list[str]`, `always?` | `{ok}` | Same effect as the web buttons; G0 needs the user's answer in `notes`; G2 requires explicit action ids |
 | `await_next_task` | `worker_id: str`, `wait_s: int = 20` (clamped ≤25) | `{task: null}` or `{task_id, skill, session_id, inputs, output_schema, deadline_at}` | Long-poll. Worker loops until told `stop` |
 | `heartbeat_task` | `task_id` | `{lease_until}` | Extends lease 120 s |
 | `submit_task_result` | `task_id`, `result_json: str`, `artifact_urls?: list[str]` | `{ok, validation_errors[]}` | Rejected if JSON fails `output_schema` → worker may retry |
 | `fail_task` | `task_id`, `reason` | `{ok}` | Agent falls back immediately |
 | `upload_artifact` | `task_id`, `filename`, `content_base64` | `{url}` | Files (DOCX/XLSX/PPTX) stored in GCS bucket; size cap 10 MB |
+| `check_followups` | `session_id` | `{results[]}` | Checks replies to sent outreach emails; replies with a time are added to the founder's calendar (no invites) |
 | `ask_session` | `session_id`, `question` | `{reply}` | Friendly, grounded Q&A about the session (Session Assistant); ≤24 s |
 | `get_session_summary` | `session_id` | markdown | Lets WorkBuddy narrate results in chat |
 

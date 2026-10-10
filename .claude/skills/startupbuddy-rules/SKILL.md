@@ -62,3 +62,14 @@ if result is None:
 ## 7 · Secrets never in repo or docs
 **Right:** `os.environ["MAPS_API_KEY"]`; names only in `docs/CREDENTIALS.md`.
 **Wrong:** committing `token.json`, `maps-api.key`, `.env`, or pasting a key into a doc.
+
+
+## 8 · Understand before planning (Phase 0 guardrail)
+**Why:** "I want to sell drugs" was once planned as a pharmacy. Never assume the convenient reading of risky words.
+**Right:** the intake screener classifies the intent; `RISK` words force a G0 clarification; `ILLEGAL` words block with the law cited; G0 is never auto-approved, even with Always allow.
+**Wrong:** letting the coordinator start Phase 1 on an ambiguous or illegal intent, or auto-approving G0.
+
+## 9 · Follow-ups act only inside the founder's own space
+**Why:** the founder approved "draft the email, then schedule when they reply"; inviting third parties is outward action they did not approve.
+**Right:** a reply that proposes a time creates an event in the founder's calendar with **no attendees** (Meet link only if the reply says online), and the feed says so.
+**Wrong:** adding the sender as an attendee, sending a reply email, or booking a Meet for an in-person F&B meet-up.

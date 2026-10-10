@@ -33,9 +33,13 @@ async def lifespan(_: FastAPI):
         await ingest_all()
     except Exception:
         log.exception("knowledge ingest failed")
+    import asyncio
+    from app.agent import followup
+    watcher = asyncio.create_task(followup.watcher())
     async with mcp_server.session_manager.run():
         log.info("StartupBuddy ready: model=%s location=%s", settings.gemini_model, settings.google_cloud_location)
         yield
+    watcher.cancel()
 
 
 api = FastAPI(title="StartupBuddy API", version="0.1.0", lifespan=lifespan)

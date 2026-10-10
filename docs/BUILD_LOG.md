@@ -123,3 +123,21 @@
 - Live UI: only reached nodes render; wave-1 skeletons + live thinking visible; G1 Approve from the new card.
 ### Still open
 - Knowledge base nearly empty ("Found 0 references"): fill with verified MY/Sarawak sources next.
+
+
+## [2026-10-11 02:30 MYT] Guardrails, business-type awareness, rational actions with follow-ups
+### Why (owner report)
+- "I want to sell drugs" was planned as a pharmacy; every action became a Google Meet even for F&B meet-ups; Google Maps scouting ran for every idea, digital ones included.
+### What changed
+- Phase 0 `intake_screener` (ScreenOut) with Malaysian law knowledge; verdicts allowed / regulated / ambiguous / prohibited; G0 clarification gate (never auto, ≤2 rounds); `blocked` phase with legal alternatives. Code backstops: RISK words → clarify; ILLEGAL words → block (law cited); deterministic fallback + one retry when the model stalls (it stalled on "ganja" content).
+- business_type physical / digital / hybrid: Places scouting only when `needs_location_scouting`; digital ideas get online-competitor desk research; `screening` injected into every agent's context; prompts demand critical, evidence-backed judgement.
+- Advisor kinds: email_outreach (draft → reply watcher → calendar on reply, Meet only if online, no attendees), site_visit (calendar, no Meet → Done/Reschedule), online_meeting, task. Follow-up watcher every 120 s + `POST /followups/check` + MCP `check_followups`; `POST /actions/{id}/followup` for founder updates. `gmail.readonly` added to link_google.py; without it the app shows "reconnect Google".
+- Frontend: Intake Screener node (shield), G0 card, intake card (type, verdict, licences, red flags), blocked card + banner, kind icons, follow-up chips, Check replies, Done/Reschedule.
+### Verified (local, 2026-10-11)
+- "sell drugs" → G0 question (pharmacy or other?); answer "ganja and pills" → blocked (Dangerous Drugs Act 1952, Poisons Act 1952) with legal alternatives.
+- "sell drugs" + "registered pharmacist, community pharmacy" → regulated, physical, licences: Type A licence (Poisons Act 1952), APC, council premises licence.
+- "budgeting app for university students" → digital, no Maps calls (0), online competitor hints (MAE, Planner Bee, Spendee…), critical concerns (churn, low willingness to pay).
+- Kolo mee → actions: 2 site visits (no Meet), 1 email outreach (JAIS), 1 task; executed: site visit → calendar (awaiting_update), email → Gmail draft (waiting_reply), task → checklist; Done update recorded.
+- Reply parser: in-person reply → no Meet + location; "Google Meet call" → online; "see our website" → no event, next step only.
+### Still open
+- Reply watching live needs the owner to re-link Google with gmail.readonly and update the `gws-token` secret.

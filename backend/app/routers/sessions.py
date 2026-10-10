@@ -27,7 +27,7 @@ class CreateSession(BaseModel):
 
 
 class GateDecision(BaseModel):
-    decision: Literal["approve", "edit", "reject"]
+    decision: Literal["approve", "edit", "reject", "clarify"]
     notes: str | None = None
     statement: str | None = None
     action_ids: list[str] = Field(default_factory=list)
@@ -50,7 +50,7 @@ def _iso(d: datetime | None) -> str | None:
 def _summary(s: StartupSession) -> dict[str, Any]:
     return {"id": s.id, "title": s.title, "intent": s.intent, "location_text": s.location_text,
             "phase": s.phase, "origin": s.origin, "error": s.error, "auto_g1": s.auto_g1, "auto_g2": s.auto_g2,
-            "summary": s.summary,
+            "summary": s.summary, "screen": s.screen, "clarification": s.clarification,
             "created_at": _iso(s.created_at), "updated_at": _iso(s.updated_at)}
 
 
@@ -115,7 +115,8 @@ async def session_detail(sid: str) -> dict[str, Any]:
                                 "overall": verdict.overall},
         "actions": [{"id": a.id, "kind": a.kind, "title": a.title, "rationale": a.rationale, "payload": a.payload,
                      "source_agent": a.source_agent, "approval": a.approval, "external_ref": a.external_ref,
-                     "external_url": a.external_url} for a in actions],
+                     "external_url": a.external_url, "follow_up": a.follow_up, "follow_up_note": a.follow_up_note}
+                    for a in actions],
         "artifacts": [{"id": a.id, "kind": a.kind, "filename": a.filename, "url": a.url, "size_bytes": a.size_bytes}
                       for a in arts],
         "workbuddy_tasks": [{"id": t.id, "skill": t.skill, "status": t.status, "attempts": t.attempts,
@@ -138,9 +139,9 @@ async def delete_session(sid: str) -> dict[str, bool]:
 
 
 async def decide_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]:
-    expected = {"G1": "gate_g1", "G2": "gate_g2"}.get(gate.upper())
+    expected = {"G0": "gate_g0", "G1": "gate_g1", "G2": "gate_g2"}.get(gate.upper())
     if not expected:
-        raise HTTPException(400, "gate must be G1 or G2")
+        raise HTTPException(400, "gate must be G0, G1 or G2")
     async with SessionLocal() as db:
         s = await db.get(StartupSession, sid)
         if not s:
@@ -148,6 +149,21 @@ async def decide_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]
         if s.phase != expected:
             raise HTTPException(409, f"session is in phase {s.phase}, not {expected}")
         now = datetime.now(timezone.utc)
+        if expected == "gate_g0":
+            answer = (body.notes or body.statement or "").strip()
+            if body.decision == "reject":
+                s.phase, s.error = "blocked", "Stopped by the founder at the clarification step"
+            else:
+                if not answer:
+                    raise HTTPException(422, "please answer the clarifying question")
+                s.clarification = (s.clarification + "\n" + answer if s.clarification else answer)[:2000]
+                s.phase = "screening"
+            await db.commit()
+            from app.events import emit
+            await emit(sid, "founder", "chat", answer if body.decision != "reject" else "Stop here, please.",
+                       detail={"role": "user", "channel": "web", "gate": "G0"})
+            pipeline.gate_event(sid).set()
+            return {"ok": True, "phase": s.phase}
         if body.always:
             if expected == "gate_g1":
                 s.auto_g1 = True
@@ -301,6 +317,35 @@ async def rerender_docx(sid: str) -> dict[str, Any]:
     if not t:
         raise HTTPException(404, "no WorkBuddy report for this session yet")
     await _store_report_docx(sid, t.id, t.result or {})
+    return {"ok": True}
+
+
+class FollowUpIn(BaseModel):
+    status: Literal["done", "reschedule", "cancelled"]
+    note: str | None = None
+
+
+@router.post("/sessions/{sid}/followups/check")
+async def check_followups(sid: str) -> dict[str, Any]:
+    from app.agent import followup
+    return {"results": await followup.check(sid)}
+
+
+@router.post("/sessions/{sid}/actions/{aid}/followup")
+async def update_followup(sid: str, aid: str, body: FollowUpIn) -> dict[str, Any]:
+    """Founder's update after a site visit or meeting ('waiting for your update')."""
+    from app.events import emit
+    async with SessionLocal() as db:
+        a = await db.get(ActionItem, aid)
+        if not a or a.session_id != sid:
+            raise HTTPException(404, "action not found")
+        a.follow_up, a.follow_up_note = body.status, (body.note or a.follow_up_note)
+        a.follow_up_at = datetime.now(timezone.utc)
+        await db.commit()
+        title = a.title
+    say = {"done": f"🙌 Nice! “{title}” is done", "reschedule": f"🔁 Noted, “{title}” needs a new time",
+           "cancelled": f"🗑️ “{title}” cancelled"}[body.status]
+    await emit(sid, "founder", "followup", say + (f": {body.note}" if body.note else ""), target="advisor")
     return {"ok": True}
 
 

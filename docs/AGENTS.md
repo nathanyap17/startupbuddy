@@ -6,6 +6,11 @@
 
 ```
 StartupPipeline (custom BaseAgent orchestrator; reads gates from DB, so it is resumable)
+├── Phase 0  intake_screener (guardrail, added 2026-10-11)
+│     verdict allowed | regulated | ambiguous | prohibited (Malaysian law) · business_type physical | digital | hybrid
+│     code backstops: RISK words force clarification; ILLEGAL words (Dangerous Drugs Act 1952, Arms Act 1960…) block;
+│     deterministic fallback if the model can't answer
+│     → ⏸ G0 (ambiguous only, never auto-approved, ≤2 rounds) · prohibited → phase "blocked" with legal alternatives
 ├── Phase 1  problem_coordinator (LlmAgent, router)
 │     tools: places_nearby · opendosm_lookup · search_knowledge · enqueue_workbuddy_task(desk_research)
 │            save_problem_statement · add_evidence
@@ -58,3 +63,15 @@ Aggregation (code, not LLM): mean per block; a block is sent back if its mean < 
 | `one_pager` | pipeline after Phase 3 | PPTX/PDF pitch one-pager (attachment for Advisor emails) |
 
 Definitions: `workbuddy/skills/`. Contract: `docs/MCP_CONTRACT.md`.
+
+
+## Guardrail and follow-up helpers (2026-10-11; not counted in the "16 agents")
+
+| Agent | When | Output | Notes |
+|---|---|---|---|
+| `intake_screener` | Phase 0, before anything else | `ScreenOut` (verdict, business_type, needs_location_scouting, licences, critical concerns, clarifying question / refusal) | Shared with every later agent as `screening`; Google Places runs only if `needs_location_scouting` |
+| `follow_up` | after an approved `email_outreach` is sent and a reply arrives | `FollowUpOut` (summary, proposes_time, start, is_online, location, next step) | Watcher checks Gmail every 120 s (needs `gmail.readonly`); a proposed time becomes an event in the founder's own calendar (Meet only if the reply says online; no attendees) |
+| `session_assistant` | founder asks in chat / WorkBuddy `ask_session` | text | Grounded in the session |
+| `pilot_summary` | end of run | one-liner + highlights | |
+
+Advisor action kinds: `email_outreach` (draft → wait for reply → schedule), `site_visit` (calendar, no video link → waiting for founder's update), `online_meeting` (calendar + Meet, only when naturally online), `task` (checklist).

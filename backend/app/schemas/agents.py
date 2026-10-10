@@ -48,16 +48,20 @@ class ReviewOut(BaseModel):
 
 
 class ActionOut(BaseModel):
-    kind: Literal["calendar_event", "gmail_draft"]
+    kind: Literal["email_outreach", "site_visit", "online_meeting", "task"] = Field(
+        description="email_outreach: draft an email to an organisation and wait for its reply; site_visit: an in-person "
+                    "visit or meet-up at a physical place (no video link); online_meeting: a video call, only when the "
+                    "other side is remote or it is naturally online; task: something the founder does alone (no Google action)")
     title: str
     rationale: str = Field(description="Why, citing which agent's decision this comes from")
     source_agent: str = Field(description="Agent whose decision produced this action, e.g. key_partners")
-    start_iso: str | None = Field(default=None, description="For calendar_event: start time ISO 8601 with +08:00")
+    start_iso: str | None = Field(default=None, description="site_visit/online_meeting: start time ISO 8601 with +08:00")
     duration_min: int = 45
-    location: str = ""
-    email_to: str = Field(default="", description="For gmail_draft: an organisation's public contact address, or empty for the founder to fill")
+    location: str = Field(default="", description="site_visit: the physical address or place name")
+    email_to: str = Field(default="", description="email_outreach: an organisation's public contact address, or empty for the founder to fill")
     email_subject: str = ""
-    email_body: str = ""
+    email_body: str = Field(default="", description="email_outreach: polite, specific, under 150 words, asks for a meeting or information")
+    follow_up_plan: str = Field(default="", description="What happens next, e.g. 'wait for reply, then schedule the meeting'")
 
 
 class ActionsOut(BaseModel):
@@ -70,3 +74,29 @@ class PilotSummaryOut(BaseModel):
     verdict: Literal["go", "revise", "stop"]
     highlights: list[str] = Field(default_factory=list)
     first_step: str = ""
+
+
+class ScreenOut(BaseModel):
+    verdict: Literal["allowed", "regulated", "ambiguous", "prohibited"]
+    interpretation: str = Field(description="What the founder most likely means, in one sentence, without assuming the benign reading of ambiguous words")
+    business_type: Literal["physical", "digital", "hybrid"] = Field(description="physical: serves customers at a place; digital: sold/delivered online; hybrid: both")
+    sector: str
+    needs_location_scouting: bool = Field(description="True only if nearby physical competitors and foot traffic matter")
+    competitor_query: str = Field(default="", description="Short Google Maps query for nearby competitors, e.g. 'kolo mee' (physical/hybrid only)")
+    online_competitor_hints: list[str] = Field(default_factory=list, description="Kinds of online competitors/platforms to research (digital/hybrid)")
+    regulators: list[str] = Field(default_factory=list, description="Malaysian regulators/agencies involved")
+    licences: list[str] = Field(default_factory=list, description="Licences, permits or laws that apply")
+    critical_concerns: list[str] = Field(default_factory=list, description="Honest early red flags about viability or legality")
+    clarifying_question: str = Field(default="", description="For ambiguous: ONE friendly question that resolves the ambiguity")
+    refusal_reason: str = Field(default="", description="For prohibited: why, citing the law, in plain words")
+    legal_alternatives: list[str] = Field(default_factory=list, description="For prohibited/ambiguous: legal business ideas close to the intent")
+
+
+class FollowUpOut(BaseModel):
+    reply_summary: str = Field(description="One or two sentences: what the other side said")
+    proposes_time: bool = Field(description="True only if the reply proposes or confirms a specific date and time")
+    start_iso: str | None = Field(default=None, description="Proposed start, ISO 8601 with +08:00")
+    duration_min: int = 45
+    is_online: bool = Field(default=False, description="True only if the reply says the meeting is online / video call / Google Meet / Zoom")
+    location: str = ""
+    suggested_next_step: str = Field(description="What the founder should do next, e.g. reply to confirm, prepare documents")

@@ -1,10 +1,11 @@
-"""StartupPipeline: Phase 1 problem → G1 → Phase 2 BMC (3 waves) → Phase 3 council (5 parallel,
+"""StartupPipeline: Phase 0 intake screening (guardrails, G0 clarification) → Phase 1 problem → G1 → Phase 2 BMC (3 waves) → Phase 3 council (5 parallel,
 deterministic aggregation) → WorkBuddy report + Phase 4 advisor → G2 → approved actions.
 
 Gates live in the DB (phase) and wake via in-process events (single Cloud Run instance)."""
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -20,7 +21,7 @@ from app.mcp import gws
 from app.models import (ActionItem, BmcBlock, CouncilReview, CouncilVerdict, EvidenceItem, ProblemStatement,
                         StartupSession)
 from app.rag.search import search as kb_search
-from app.schemas.agents import ActionsOut, BlockOut, EvidenceOut, PilotSummaryOut, ProblemOut, ReviewOut
+from app.schemas.agents import ActionsOut, BlockOut, EvidenceOut, PilotSummaryOut, ProblemOut, ReviewOut, ScreenOut
 from app.tools import places
 from app.workbuddy import queue
 
@@ -33,6 +34,9 @@ VERDICT_SAY = {"go": "🎉 Council verdict: GO, this is ready to test", "revise"
                "stop": "🛑 Council verdict: STOP, the model has a fundamental problem"}
 _gates: dict[str, asyncio.Event] = {}
 PHASE_SAY = {
+    "screening": "🛡️ First, a quick check that I understand your idea correctly",
+    "gate_g0": "🤔 I need one clarification before I start",
+    "blocked": "🛑 This idea can't continue as described",
     "problem": "🧭 Let's understand your idea and your neighbourhood first",
     "gate_g1": "🙋 Checkpoint 1: please confirm the problem statement",
     "bmc": "🧱 Building your Business Model Canvas, block by block",
@@ -45,6 +49,50 @@ PHASE_SAY = {
     "failed": "😓 The run stopped",
 }
 _running: dict[str, asyncio.Task] = {}
+# Deterministic backstop (code, not the model): risky words force a clarification even if the screener says "allowed".
+RISK = re.compile(
+    r"\b(drugs?|dadah|ganja|weed|marijuana|cannabis|kush|meth|syabu|ecstasy|pil kuda|pills?|ketum|kratom|"
+    r"vapes?|vaping|guns?|firearms?|weapons?|ammo|bombs?|casinos?|gambl\w*|judi|betting|loan sharks?|ah long|"
+    r"loans?|escorts?|porn\w*|counterfeit|replicas?|crypto\w*|forex|mlm|pyramid|ivory|pangolin|hornbills?)\b", re.I)
+# Clearly illegal in Malaysia whatever the framing (used when the screener can't answer, and as an override).
+ILLEGAL = {
+    "Dangerous Drugs Act 1952": re.compile(r"\b(ganja|marijuana|cannabis|kush|meth|syabu|ecstasy|pil kuda|dadah|cocaine|heroin)\b", re.I),
+    "Arms Act 1960": re.compile(r"\b(guns?|firearms?|bombs?|ammo|ammunition)\b", re.I),
+    "Moneylenders Act 1951": re.compile(r"\b(ah long|loan sharks?)\b", re.I),
+    "Penal Code and Film Censorship Act 2002": re.compile(r"\b(porn\w*|escort services?)\b", re.I),
+    "Trade Descriptions Act 2011": re.compile(r"\b(counterfeit|fake (?:branded|designer)\w*)\b", re.I),
+}
+MAX_CLARIFY = 2
+
+
+def _illegal_hit(text: str) -> tuple[str, str] | None:
+    for law, rx in ILLEGAL.items():
+        m = rx.search(text)
+        if m:
+            return law, m.group(0)
+    return None
+
+
+def _fallback_screen(intent: str, clar: str | None) -> ScreenOut:
+    """Deterministic screening when the model can't answer: block clear illegality, otherwise ask or continue."""
+    text = f"{intent} {clar or ''}"
+    hit = _illegal_hit(text)
+    if hit:
+        law, word = hit
+        return ScreenOut(verdict="prohibited", interpretation=f"A business involving “{word}”", business_type="physical",
+                         sector="restricted", needs_location_scouting=False,
+                         refusal_reason=f"Dealing in “{word}” is illegal in Malaysia under the {law}.",
+                         legal_alternatives=["A licensed community pharmacy (if you are a registered pharmacist)",
+                                             "NPRA-registered health supplements", "A wellness or fitness business"])
+    if RISK.search(text) and not clar:
+        return ScreenOut(verdict="ambiguous", interpretation=intent, business_type="physical", sector="unclear",
+                         needs_location_scouting=False,
+                         clarifying_question="Could you tell me a bit more about exactly what you'll sell or offer, and whether it needs a licence?")
+    return ScreenOut(verdict="allowed", interpretation=intent, business_type="hybrid", sector="general",
+                     needs_location_scouting=True, critical_concerns=["Automatic screening was unavailable; review the idea's legality yourself"])
+ACTION_SAY = {"email_outreach": "✉️ Draft saved (send it when ready; I'll watch for the reply): ",
+              "site_visit": "📍 In your calendar (in person): ", "online_meeting": "💻 In your calendar with a Meet link: ",
+              "task": "✅ Added to your checklist: ", "calendar_event": "📅 Booked: ", "gmail_draft": "✉️ Draft saved: "}
 
 
 def gate_event(session_id: str) -> asyncio.Event:
@@ -88,7 +136,7 @@ async def _wait_gate(session_id: str, phase: str) -> None:
     await _set_phase(session_id, phase)
     async with SessionLocal() as db:
         s = await db.get(StartupSession, session_id)
-        auto = s.auto_g1 if phase == "gate_g1" else s.auto_g2
+        auto = s.auto_g1 if phase == "gate_g1" else s.auto_g2 if phase == "gate_g2" else False  # G0 never auto
     if auto:
         await auto_approve(session_id, phase)
     while True:
@@ -114,13 +162,91 @@ async def auto_approve(session_id: str, phase: str) -> None:
     await decide_gate(session_id, gate, GateDecision(decision="approve", action_ids=ids))
 
 
+# ---------------------------------------------------------------- Phase 0
+def _backstop(out: ScreenOut, text: str, clarified: bool) -> ScreenOut:
+    hit = RISK.search(text)
+    if not hit or out.verdict in ("prohibited", "ambiguous", "regulated"):
+        return out
+    if not clarified:
+        out.verdict = "ambiguous"
+        out.clarifying_question = out.clarifying_question or (
+            f"When you say “{hit.group(0)}”, what exactly will you sell or offer, and do you (or a partner) hold any licence for it?")
+    else:
+        out.verdict = "regulated"  # clarified but still touches a sensitive area: proceed with licences flagged
+        out.critical_concerns = [*out.critical_concerns, f"Sensitive area (“{hit.group(0)}”): confirm the exact licence before launch"]
+    return out
+
+
+async def _phase_screen(sid: str) -> bool:
+    """Phase 0: understand the idea before anything else. Returns False if the run must stop."""
+    for rnd in range(MAX_CLARIFY + 1):
+        async with SessionLocal() as db:
+            s = await db.get(StartupSession, sid)
+            intent, loc, clar = s.intent, s.location_text, s.clarification
+        await _set_phase(sid, "screening")
+        prompt = json.dumps({"intent": intent, "founder_clarification": clar, "location": loc}, ensure_ascii=False)
+        out: ScreenOut | None = None
+        for attempt, limit in ((1, 60), (2, 40)):
+            try:
+                agent = factories.make_agent("intake_screener", prompts.SCREENER, ScreenOut, sid, "screen")
+                out = await run_agent(agent, prompt, ScreenOut, sid, "screen", timeout_s=limit)
+                break
+            except Exception:
+                if attempt == 1:
+                    await emit(sid, "intake_screener", "thought", "🔁 Let me look at that again", target="screen")
+        if out is None:
+            out = _fallback_screen(intent, clar)
+            await emit(sid, "intake_screener", "fallback", "🛡️ I used my built-in safety rules for this check", target="screen")
+        out = _backstop(out, f"{intent} {clar or ''}", bool(clar))
+        hit = _illegal_hit(f"{intent} {clar or ''}")
+        if hit and out.verdict in ("allowed", "regulated"):  # the founder's own words name something illegal
+            if rnd >= 1:
+                out.verdict = "prohibited"
+                out.refusal_reason = out.refusal_reason or f"Dealing in “{hit[1]}” is illegal in Malaysia under the {hit[0]}."
+            else:
+                out.verdict = "ambiguous"
+                out.clarifying_question = f"Just to be sure: does your business involve “{hit[1]}” itself? That's illegal in Malaysia, so tell me what you'll actually offer."
+        async with SessionLocal() as db:
+            row = await db.get(StartupSession, sid)
+            row.screen = out.model_dump()
+            await db.commit()
+        if out.verdict == "prohibited":
+            alt = "; ".join(out.legal_alternatives[:3])
+            msg = f"🛑 I can't help plan this one: {out.refusal_reason}" + (f" Legal ideas close to it: {alt}." if alt else "")
+            await emit(sid, "intake_screener", "blocked", msg, target="screen", detail=out.model_dump())
+            await _set_phase(sid, "blocked", error=out.refusal_reason or "This idea is not legal in Malaysia as described.")
+            return False
+        if out.verdict == "ambiguous":
+            if rnd == MAX_CLARIFY:
+                await _set_phase(sid, "blocked", error="I couldn't confirm a legal reading of this idea after two clarifications.")
+                return False
+            await emit(sid, "intake_screener", "clarify", f"🤔 {out.clarifying_question}", target="screen", detail=out.model_dump())
+            await _wait_gate(sid, "gate_g0")
+            async with SessionLocal() as db:
+                if (await db.get(StartupSession, sid)).phase == "blocked":
+                    return False
+            continue
+        kind = {"physical": "🏪 Physical business", "digital": "🌐 Digital business", "hybrid": "🏪🌐 Hybrid business"}[out.business_type]
+        line = f"🛡️ Intake check passed: {out.interpretation} · {kind}"
+        if out.verdict == "regulated":
+            line = f"🛡️ Regulated business: {out.interpretation}. You'll need: {', '.join(out.licences[:4]) or 'specific licences'}"
+        await emit(sid, "intake_screener", "screen", line, target="screen", detail=out.model_dump())
+        if not out.needs_location_scouting:
+            await emit(sid, "intake_screener", "thought",
+                       "🌐 Your competitors are online, so I'll research them on the web instead of scanning the street", target="screen")
+        return True
+    return False
+
+
 # ---------------------------------------------------------------- Phase 1
 async def _phase_problem(s: StartupSession) -> None:
     sid = s.id
     await _set_phase(sid, "problem")
+    screen = s.screen or {}
+    scout = bool(screen.get("needs_location_scouting", True))
     geo = None
     try:
-        geo = await places.geocode(s.location_text)
+        geo = await places.geocode(s.location_text) if scout else None
     except Exception as e:
         await emit(sid, "problem_coordinator", "error", f"😓 I couldn't find that place on the map ({type(e).__name__})", target="problem")
     if geo:
@@ -132,16 +258,24 @@ async def _phase_problem(s: StartupSession) -> None:
                    target="problem", detail=geo)
 
     # WorkBuddy desk research runs in parallel with local grounding.
+    licences = ", ".join(screen.get("licences", [])[:5])
+    if scout:
+        questions = ["Demand and customer behaviour for this idea in this Malaysian location",
+                     "Typical prices and costs in RM", f"Licences/registration needed ({licences or 'SSM, local council, food/halal if relevant'})",
+                     "Trends or recent news (why now)"]
+    else:
+        hints = ", ".join(screen.get("online_competitor_hints", [])[:4])
+        questions = [f"Online competitors and alternatives in Malaysia ({hints or 'apps, websites, marketplaces'}), with links",
+                     "Pricing models and typical prices in RM", f"Regulation that applies ({licences or 'SSM, PDPA 2010, sector rules'})",
+                     "Demand signals and trends in Malaysia (why now)"]
     task_id = await queue.enqueue(sid, "desk_research", {
-        "intent": s.intent, "location": s.location_text,
-        "questions": ["Demand and customer behaviour for this idea in this Malaysian location",
-                      "Typical prices and costs in RM", "Licences/registration needed (SSM, local council, food/halal if relevant)",
-                      "Trends or recent news (why now)"]})
+        "intent": s.intent, "clarification": s.clarification, "location": s.location_text,
+        "business_type": screen.get("business_type"), "questions": questions})
 
     competitors: list[dict[str, Any]] = []
-    if geo:
+    if geo and scout:
         try:
-            query = await _competitor_query(s.intent)
+            query = screen.get("competitor_query") or await _competitor_query(s.intent)
             competitors = await places.nearby_competitors(query, geo["lat"], geo["lng"], 1000)
             within = [c for c in competitors if c["distance_km"] <= 1.0]
             await emit(sid, "problem_coordinator", "tool_result",
@@ -149,23 +283,24 @@ async def _phase_problem(s: StartupSession) -> None:
                        detail={"competitors": competitors[:10]})
         except Exception as e:
             await emit(sid, "problem_coordinator", "error", f"😓 Google Maps search didn't work this time ({type(e).__name__})", target="problem")
-    kb = await kb_search(f"{s.intent} {s.location_text} licence registration", k=4)
+    kb = await kb_search(f"{screen.get('sector', s.intent)} {s.location_text} {licences} licence registration", k=4)
 
     research = await queue.wait_for(task_id, timeout_s=min(240, settings.workbuddy_task_deadline_s))
     if research is None:
         await emit(sid, "problem_coordinator", "fallback",
-                   "⏳ WorkBuddy's desk research didn't arrive in time, so I'll continue with Google Maps + the knowledge base (marked for verification)",
+                   "⏳ WorkBuddy's desk research didn't arrive in time, so I'll continue with what I have (marked for verification)",
                    target="problem")
     else:
         await _save_evidence(sid, "problem", [EvidenceOut(**f) for f in research.get("findings", [])][:12],
                              "workbuddy:desk_research")
 
     prompt = json.dumps({
-        "intent": s.intent, "location": s.location_text, "geocode": geo,
-        "nearby_competitors_google_maps": competitors[:12],
+        "intent": s.intent, "founder_clarification": s.clarification, "location": s.location_text,
+        "screening": screen, "geocode": geo,
+        "nearby_competitors_google_maps": competitors[:12] if scout else "not applicable: digital business, competitors are online",
         "knowledge_excerpts": kb, "workbuddy_desk_research": research,
     }, ensure_ascii=False, default=str)
-    agent = factories.coordinator(sid, geo and geo["lat"], geo and geo["lng"])
+    agent = factories.coordinator(sid, geo["lat"] if geo and scout else None, geo["lng"] if geo and scout else None)
     out = await run_agent(agent, prompt, ProblemOut, sid, "problem", timeout_s=150)
     async with SessionLocal() as db:
         db.add(ProblemStatement(session_id=sid, statement=out.statement, target_user=out.target_user,
@@ -199,7 +334,8 @@ async def _context(sid: str) -> dict[str, Any]:
     for b in sorted(blocks, key=lambda b: b.round):
         if b.status == "done":
             latest[b.key] = b.content
-    return {"intent": s.intent, "location": s.location_text,
+    return {"intent": s.intent, "founder_clarification": s.clarification, "location": s.location_text,
+            "screening": s.screen,
             "problem": {"statement": p.statement, "target_user": p.target_user, "pain": p.pain,
                         "why_now": p.why_now, **p.details}, "canvas_so_far": latest}
 
@@ -288,7 +424,7 @@ async def _phase_advisor(sid: str, agg: dict[str, Any]) -> None:
     async with SessionLocal() as db:
         for i, a in enumerate(out.actions[:5]):
             payload = a.model_dump(exclude={"kind", "title", "rationale", "source_agent"})
-            if a.kind == "calendar_event":
+            if a.kind in ("site_visit", "online_meeting"):
                 payload["start_iso"] = _safe_start(a.start_iso, today, i)
             db.add(ActionItem(session_id=sid, kind=a.kind, title=a.title[:200], rationale=a.rationale,
                               payload=payload, source_agent=a.source_agent[:60]))
@@ -341,7 +477,12 @@ async def _run(sid: str) -> None:
     try:
         async with SessionLocal() as db:
             s = await db.get(StartupSession, sid)
-        if s.phase in ("intake", "problem"):
+        if s.phase in ("intake", "screening", "gate_g0"):
+            if not await _phase_screen(sid):
+                return
+            async with SessionLocal() as db:
+                s = await db.get(StartupSession, sid)
+        if s.phase in ("intake", "screening", "problem"):
             await _phase_problem(s)
             await _wait_gate(sid, "gate_g1")
         await _phase_bmc(sid)
@@ -356,7 +497,7 @@ async def _run(sid: str) -> None:
                                                                   ActionItem.approval == "approved"))).scalars().all()
         for a in approved:
             res = await gws.execute(a.id)
-            await emit(sid, "advisor", "tool_result", (("📅 Booked: " if a.kind == "calendar_event" else "✉️ Draft saved: ") + a.title) if res.get("status") == "executed" else f"😓 Couldn't do “{a.title}”: {res.get('error') or res.get('ref')}",
+            await emit(sid, "advisor", "tool_result", (ACTION_SAY.get(a.kind, "✅ Done: ") + a.title) if res.get("status") == "executed" else f"😓 Couldn't do “{a.title}”: {res.get('error') or res.get('ref')}",
                        target="advisor", detail=res)
         report = await queue.wait_for(report_task, timeout_s=300)
         if report is None:

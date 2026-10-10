@@ -12,7 +12,7 @@ const LABEL_CLASS: Record<string, string> = { sourced: "sourced", estimated: "in
 const LABEL_SAY: Record<string, string> = { sourced: "Sourced", estimated: "Estimated", needs_verification: "Verify" };
 const ACTIVE_KINDS = new Set(["start", "thought", "thinking", "tool_call", "tool_result"]);
 const STEPS: { k: string; t: string; phases: string[] }[] = [
-  { k: "1", t: "Ground", phases: ["intake", "problem", "gate_g1"] },
+  { k: "1", t: "Ground", phases: ["intake", "screening", "gate_g0", "blocked", "problem", "gate_g1"] },
   { k: "2", t: "Build", phases: ["bmc"] },
   { k: "3", t: "Challenge", phases: ["council", "deliverables"] },
   { k: "4", t: "Act", phases: ["advisor", "gate_g2", "actions"] },
@@ -37,7 +37,20 @@ function EvidenceList({ items }: { items: Evidence[] }) {
 function Drawer({ d, sel, onClose }: { d: SessionDetail; sel: string; onClose: () => void }) {
   let title = "";
   let body: JSX.Element | null = null;
-  if (sel === "problem" && d.problem) {
+  if (sel === "screen" && d.screen) {
+    const s = d.screen;
+    title = "🛡️ Intake check";
+    body = (<>
+      <p>{s.interpretation}</p>
+      <div className="small"><b>Verdict:</b> {s.verdict} · <b>Type:</b> {s.business_type} · <b>Sector:</b> {s.sector}</div>
+      {d.clarification && <div className="small"><b>Your clarification:</b> {d.clarification}</div>}
+      {s.refusal_reason && <div className="small"><b>Why not:</b> {s.refusal_reason}</div>}
+      {s.licences.length > 0 && <><h4>Licences &amp; laws</h4><ul className="small">{s.licences.map((x) => <li key={x}>{x}</li>)}</ul></>}
+      {s.regulators.length > 0 && <div className="small"><b>Regulators:</b> {s.regulators.join(", ")}</div>}
+      {s.critical_concerns.length > 0 && <><h4>Early red flags</h4><ul className="small">{s.critical_concerns.map((x) => <li key={x}>{x}</li>)}</ul></>}
+      <p className="small muted">Guidance, not legal advice. Confirm licences with the regulator.</p>
+    </>);
+  } else if (sel === "problem" && d.problem) {
     const p = d.problem;
     const comps = p.details.competitors ?? [];
     title = "🧭 Problem statement";
@@ -111,7 +124,7 @@ export default function Workspace() {
   }, [id, refresh, scheduleRefresh]);
 
   if (!d) return <><TopBar /><main className="page muted">Loading…</main></>;
-  const running = !["done", "failed", "gate_g1", "gate_g2"].includes(d.phase);
+  const running = !["done", "failed", "blocked", "gate_g0", "gate_g1", "gate_g2"].includes(d.phase);
   const stepIdx = STEPS.findIndex((s) => s.phases.includes(d.phase));
 
   return (
@@ -140,7 +153,7 @@ export default function Workspace() {
               {d.summary.first_step && <div className="small"><b>First step:</b> {d.summary.first_step}</div>}
             </div>
           )}
-          {d.error && <div className="pilot pilot-stop"><div className="pilot-line">😓 {d.error}</div></div>}
+          {d.error && <div className="pilot pilot-stop"><div className="pilot-line">{d.phase === "blocked" ? "🛑" : "😓"} {d.error}</div></div>}
           <div className="canvas-wrap">
             <Canvas d={d} live={live} selected={sel} onSelect={setSel} />
             {sel && <Drawer d={d} sel={sel} onClose={() => setSel("")} />}

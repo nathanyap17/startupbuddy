@@ -12,7 +12,7 @@ const AGENT: Record<string, [string, string]> = {
   council_customer: ["🛒", "Customer"], council_ceo: ["🧑‍💼", "CEO"], council_investor: ["📈", "Investor"],
   council_cfo: ["🧮", "CFO"], council_mentor: ["🧑‍🏫", "Local Mentor"], council: ["⚖️", "Council"],
   advisor: ["🗓️", "Advisor"], workbuddy: ["🤖", "WorkBuddy"], pipeline: ["🧩", "StartupBuddy"],
-  founder: ["🙋", "You"], session_assistant: ["💬", "StartupBuddy"], pilot_summary: ["✨", "Pilot Summary"],
+  founder: ["🙋", "You"], intake_screener: ["🛡️", "Intake Screener"], follow_up: ["📬", "Follow-up"], session_assistant: ["💬", "StartupBuddy"], pilot_summary: ["✨", "Pilot Summary"],
 };
 export const agentTag = (a: string) => AGENT[a] ?? ["🤖", a.replace(/_/g, " ")];
 

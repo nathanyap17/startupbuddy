@@ -49,8 +49,10 @@ async def get_session_status(session_id: str) -> dict:
     """Current phase of a session and whether a gate (G1 problem, G2 actions) is waiting for the user."""
     from app.routers.sessions import session_detail
     d = await session_detail(session_id)
-    gate = {"gate_g1": "G1", "gate_g2": "G2"}.get(d["phase"])
+    gate = {"gate_g0": "G0", "gate_g1": "G1", "gate_g2": "G2"}.get(d["phase"])
     out = {"phase": d["phase"], "gate_waiting": gate, "app_url": _app_url(session_id), "error": d["error"]}
+    if gate == "G0" and d.get("screen"):
+        out["clarifying_question"] = d["screen"].get("clarifying_question")
     if gate == "G1" and d["problem"]:
         out["problem_statement"] = d["problem"]["statement"]
     if gate == "G2":
@@ -66,9 +68,9 @@ async def confirm_gate(session_id: str, gate: str, decision: str, notes: str = "
 
     Args:
         session_id: The session.
-        gate: "G1" (problem statement) or "G2" (actions).
-        decision: "approve" or "reject".
-        notes: Optional user notes.
+        gate: "G0" (clarification), "G1" (problem statement) or "G2" (actions).
+        decision: "approve" or "reject"; for G0 use "clarify" with the user's answer in notes.
+        notes: The user's words (required for G0).
         action_ids: For G2, the exact action ids the user approved (others are rejected).
         always: True only if the user explicitly said "always allow": future checkpoints of this
             kind in this session are then approved automatically (logged in the feed).
@@ -76,6 +78,18 @@ async def confirm_gate(session_id: str, gate: str, decision: str, notes: str = "
     from app.routers.sessions import GateDecision, decide_gate
     return await decide_gate(session_id, gate, GateDecision(decision=decision, notes=notes or None,
                                                             action_ids=action_ids or [], always=always))
+
+
+@server.tool()
+async def check_followups(session_id: str) -> dict:
+    """Check whether organisations replied to the outreach emails the founder sent from this session.
+    Replies that propose a time are put in the founder's calendar automatically (no invites sent)."""
+    import asyncio
+    from app.agent import followup
+    try:
+        return {"results": await asyncio.wait_for(followup.check(session_id), timeout=24)}
+    except TimeoutError:
+        return {"results": [], "note": "Still checking; results will appear in the app feed."}
 
 
 @server.tool()
