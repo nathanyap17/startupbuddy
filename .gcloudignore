@@ -1,9 +1,9 @@
 .git
 .gitignore
-frontend/
-docs/
-workbuddy/
-infra/
+/frontend/
+/docs/
+/workbuddy/
+/infra/
 **/.venv/
 **/node_modules/
 **/__pycache__/
