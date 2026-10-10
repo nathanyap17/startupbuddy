@@ -10,7 +10,7 @@ from app.config import settings
 from app.db import SessionLocal, engine
 from app.mcp import gws
 from app.mcp.workbuddy_server import mcp_http_app, require_api_key, server as mcp_server
-from app.models import Base, DemoUser
+from app.models import MIGRATIONS, Base, DemoUser
 from app.rag.search import ingest_all
 from app.routers import sessions
 from app.workbuddy import queue
@@ -23,6 +23,8 @@ log = logging.getLogger("startupbuddy")
 async def lifespan(_: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        for stmt in MIGRATIONS:
+            await conn.execute(text(stmt))
     async with SessionLocal() as db:
         if not (await db.execute(select(DemoUser).limit(1))).scalar_one_or_none():
             db.add(DemoUser(display_name="Demo Founder", email=None))

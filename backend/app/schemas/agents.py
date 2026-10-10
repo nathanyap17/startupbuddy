@@ -63,3 +63,10 @@ class ActionOut(BaseModel):
 class ActionsOut(BaseModel):
     actions: list[ActionOut] = Field(description="3-5 concrete first actions")
     next_30_days: list[str] = Field(default_factory=list)
+
+
+class PilotSummaryOut(BaseModel):
+    one_liner: str
+    verdict: Literal["go", "revise", "stop"]
+    highlights: list[str] = Field(default_factory=list)
+    first_step: str = ""

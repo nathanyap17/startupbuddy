@@ -11,8 +11,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from app.agent import factories
-from app.agent.common import run_agent
+from app.agent import factories, prompts
+from app.agent.common import label, run_agent
 from app.config import settings
 from app.db import SessionLocal
 from app.events import emit
@@ -20,7 +20,7 @@ from app.mcp import gws
 from app.models import (ActionItem, BmcBlock, CouncilReview, CouncilVerdict, EvidenceItem, ProblemStatement,
                         StartupSession)
 from app.rag.search import search as kb_search
-from app.schemas.agents import ActionsOut, BlockOut, EvidenceOut, ProblemOut, ReviewOut
+from app.schemas.agents import ActionsOut, BlockOut, EvidenceOut, PilotSummaryOut, ProblemOut, ReviewOut
 from app.tools import places
 from app.workbuddy import queue
 
@@ -29,7 +29,21 @@ WAVES = [["customer_segments", "value_propositions"],
          ["channels", "customer_relationships", "key_activities", "key_resources", "key_partners"],
          ["revenue_streams", "cost_structure"]]
 SEATS = ["customer", "ceo", "investor", "cfo", "mentor"]
+VERDICT_SAY = {"go": "🎉 Council verdict: GO, this is ready to test", "revise": "🔧 Council verdict: REVISE, promising but fix a few things first",
+               "stop": "🛑 Council verdict: STOP, the model has a fundamental problem"}
 _gates: dict[str, asyncio.Event] = {}
+PHASE_SAY = {
+    "problem": "🧭 Let's understand your idea and your neighbourhood first",
+    "gate_g1": "🙋 Checkpoint 1: please confirm the problem statement",
+    "bmc": "🧱 Building your Business Model Canvas, block by block",
+    "council": "⚖️ The council is reviewing your plan",
+    "deliverables": "📄 Handing the report over to WorkBuddy",
+    "advisor": "🗓️ Planning your first real-world steps",
+    "gate_g2": "🙋 Checkpoint 2: choose which actions I may take for you",
+    "actions": "🚀 Carrying out the actions you approved",
+    "done": "🎉 All done! Your pilot summary is ready",
+    "failed": "😓 The run stopped",
+}
 _running: dict[str, asyncio.Task] = {}
 
 
@@ -50,7 +64,7 @@ async def _set_phase(session_id: str, phase: str, error: str | None = None) -> N
         if error:
             s.error = error
         await db.commit()
-    await emit(session_id, "pipeline", "phase", f"Phase → {phase}", detail={"phase": phase})
+    await emit(session_id, "pipeline", "phase", PHASE_SAY.get(phase, phase), detail={"phase": phase})
 
 
 async def _save_evidence(session_id: str, scope: str, items: list[EvidenceOut], produced_by: str) -> None:
@@ -72,6 +86,11 @@ async def _wait_gate(session_id: str, phase: str) -> None:
     ev = gate_event(session_id)
     ev.clear()
     await _set_phase(session_id, phase)
+    async with SessionLocal() as db:
+        s = await db.get(StartupSession, session_id)
+        auto = s.auto_g1 if phase == "gate_g1" else s.auto_g2
+    if auto:
+        await auto_approve(session_id, phase)
     while True:
         await ev.wait()
         ev.clear()
@@ -79,6 +98,20 @@ async def _wait_gate(session_id: str, phase: str) -> None:
             s = await db.get(StartupSession, session_id)
             if s.phase != phase:
                 return
+
+
+async def auto_approve(session_id: str, phase: str) -> None:
+    """Founder chose "Always allow" for this checkpoint: approve on their behalf and say so in the feed."""
+    from app.routers.sessions import GateDecision, decide_gate
+    gate = "G1" if phase == "gate_g1" else "G2"
+    ids: list[str] = []
+    if gate == "G2":
+        async with SessionLocal() as db:
+            ids = [a.id for a in (await db.execute(select(ActionItem).where(
+                ActionItem.session_id == session_id, ActionItem.approval == "pending"))).scalars().all()]
+    await emit(session_id, "founder", "approval",
+               f"✅ Auto-approved Checkpoint {gate[-1]} (you chose Always allow)", detail={"gate": gate, "auto": True})
+    await decide_gate(session_id, gate, GateDecision(decision="approve", action_ids=ids))
 
 
 # ---------------------------------------------------------------- Phase 1
@@ -89,13 +122,13 @@ async def _phase_problem(s: StartupSession) -> None:
     try:
         geo = await places.geocode(s.location_text)
     except Exception as e:
-        await emit(sid, "problem_coordinator", "error", f"Geocoding failed: {e}", target="problem")
+        await emit(sid, "problem_coordinator", "error", f"😓 I couldn't find that place on the map ({type(e).__name__})", target="problem")
     if geo:
         async with SessionLocal() as db:
             row = await db.get(StartupSession, sid)
             row.lat, row.lng = geo["lat"], geo["lng"]
             await db.commit()
-        await emit(sid, "problem_coordinator", "tool_result", f"Located {geo['name']} ({geo['address']})",
+        await emit(sid, "problem_coordinator", "tool_result", f"📍 Found {geo['name']} on the map ({geo['address']})",
                    target="problem", detail=geo)
 
     # WorkBuddy desk research runs in parallel with local grounding.
@@ -112,16 +145,16 @@ async def _phase_problem(s: StartupSession) -> None:
             competitors = await places.nearby_competitors(query, geo["lat"], geo["lng"], 1000)
             within = [c for c in competitors if c["distance_km"] <= 1.0]
             await emit(sid, "problem_coordinator", "tool_result",
-                       f"Google Maps: {len(within)} '{query}' competitors within 1 km", target="problem",
+                       f"🗺️ Google Maps: {len(within)} '{query}' spots within 1 km of you", target="problem",
                        detail={"competitors": competitors[:10]})
         except Exception as e:
-            await emit(sid, "problem_coordinator", "error", f"Places search failed: {e}", target="problem")
+            await emit(sid, "problem_coordinator", "error", f"😓 Google Maps search didn't work this time ({type(e).__name__})", target="problem")
     kb = await kb_search(f"{s.intent} {s.location_text} licence registration", k=4)
 
     research = await queue.wait_for(task_id, timeout_s=min(240, settings.workbuddy_task_deadline_s))
     if research is None:
         await emit(sid, "problem_coordinator", "fallback",
-                   "WorkBuddy desk research not available in time; continuing with Maps + knowledge base",
+                   "⏳ WorkBuddy's desk research didn't arrive in time, so I'll continue with Google Maps + the knowledge base (marked for verification)",
                    target="problem")
     else:
         await _save_evidence(sid, "problem", [EvidenceOut(**f) for f in research.get("findings", [])][:12],
@@ -143,7 +176,7 @@ async def _phase_problem(s: StartupSession) -> None:
                                          "competitors": competitors[:10]}))
         await db.commit()
     await _save_evidence(sid, "problem", out.evidence, "problem_coordinator")
-    await emit(sid, "problem_coordinator", "done", "Problem statement ready for your confirmation (G1)",
+    await emit(sid, "problem_coordinator", "done", "📝 Your problem statement is drafted. Have a look and confirm it on the right 🙏",
                target="problem", detail={"statement": out.statement})
 
 
@@ -180,17 +213,25 @@ async def _run_block(sid: str, key: str, rnd: int, notes: list[str] | None = Non
             db.add(b)
         b.status = "thinking"
         await db.commit()
-    await emit(sid, key, "thought", f"Working on {key.replace('_', ' ')}", target=key)
+    await emit(sid, key, "thought", f"✍️ {label(key)} is drafting…", target=key)
     ctx = await _context(sid)
     if notes:
         ctx["council_notes_to_address"] = notes
-    try:
-        out = await run_agent(factories.bmc_agent(sid, key), json.dumps(ctx, ensure_ascii=False, default=str),
-                              BlockOut, sid, key)
-        content, status = out.model_dump(exclude={"evidence"}), "done"
-        await _save_evidence(sid, key, out.evidence, key)
-    except Exception as e:
-        content, status = {"summary": f"(agent failed: {type(e).__name__})", "items": [], "assumptions": []}, "failed"
+    content, status = {"summary": "(agent failed)", "items": [], "assumptions": []}, "failed"
+    for attempt in (1, 2):  # one retry: a block should not stay empty because of a single slow turn
+        try:
+            prompt = json.dumps(ctx, ensure_ascii=False, default=str)
+            if attempt == 2:
+                prompt += "
+
+Retry: answer directly from the context; call search_knowledge at most once."
+                await emit(sid, key, "thought", f"🔁 {label(key)} is taking another pass", target=key)
+            out = await run_agent(factories.bmc_agent(sid, key), prompt, BlockOut, sid, key)
+            content, status = out.model_dump(exclude={"evidence"}), "done"
+            await _save_evidence(sid, key, out.evidence, key)
+            break
+        except Exception:
+            continue
     async with SessionLocal() as db:
         b = (await db.execute(select(BmcBlock).where(BmcBlock.session_id == sid, BmcBlock.key == key,
                                                      BmcBlock.round == rnd))).scalar_one()
@@ -201,7 +242,7 @@ async def _run_block(sid: str, key: str, rnd: int, notes: list[str] | None = Non
 async def _phase_bmc(sid: str) -> None:
     await _set_phase(sid, "bmc")
     for i, wave in enumerate(WAVES, 1):
-        await emit(sid, "pipeline", "handoff", f"BMC wave {i}: {', '.join(wave)}", detail={"wave": i, "blocks": wave})
+        await emit(sid, "pipeline", "handoff", ["🌊 Wave 1: who your customers are and why they'll choose you", "🌊 Wave 2: how you reach, keep and serve them", "🌊 Wave 3: the money, revenue and costs"][i - 1], detail={"wave": i, "blocks": wave})
         await asyncio.gather(*(_run_block(sid, k, 0) for k in wave))
 
 
@@ -228,7 +269,7 @@ async def _phase_council(sid: str) -> dict[str, Any]:
         db.add(CouncilVerdict(session_id=sid, round=0, **agg))
         await db.commit()
     await emit(sid, "council", "done",
-               f"Council verdict: {agg['overall'].upper()}; weak blocks: {', '.join(agg['blocks_to_revise']) or 'none'}",
+               f"{VERDICT_SAY[agg['overall']]}" + (f" · needs work: {', '.join(b.replace('_', ' ') for b in agg['blocks_to_revise'])}" if agg['blocks_to_revise'] else ""),
                target="council", detail=agg)
     return agg
 
@@ -254,7 +295,7 @@ async def _phase_advisor(sid: str, agg: dict[str, Any]) -> None:
             db.add(ActionItem(session_id=sid, kind=a.kind, title=a.title[:200], rationale=a.rationale,
                               payload=payload, source_agent=a.source_agent[:60]))
         await db.commit()
-    await emit(sid, "advisor", "done", f"{len(out.actions[:5])} actions proposed; waiting for your approval (G2)",
+    await emit(sid, "advisor", "done", f"🗓️ {len(out.actions[:5])} first steps are ready. Tick the ones you want me to do for you",
                target="advisor", detail={"next_30_days": out.next_30_days})
 
 
@@ -269,6 +310,25 @@ def _safe_start(iso: str | None, today: datetime, i: int) -> str:
         pass
     d = (today + timedelta(days=1 + i)).replace(hour=10, minute=0, second=0, microsecond=0)
     return d.isoformat()
+
+
+async def _pilot_summary(sid: str) -> None:
+    from app.routers.sessions import session_detail
+    d = await session_detail(sid)
+    ctx = {"intent": d["intent"], "location": d["location_text"], "problem": d["problem"], "verdict": d["verdict"],
+           "council": [{k: r[k] for k in ("seat", "verdict", "risks")} for r in d["council"]],
+           "actions": [{k: a[k] for k in ("title", "approval")} for a in d["actions"]],
+           "evidence": [e for e in d["evidence"] if e["label"] != "needs_verification"][:25]}
+    agent = factories.make_agent("pilot_summary", prompts.PILOT_SUMMARY, PilotSummaryOut, sid, "summary")
+    try:
+        out = await run_agent(agent, json.dumps(ctx, ensure_ascii=False, default=str), PilotSummaryOut, sid, "summary", timeout_s=60)
+    except Exception:
+        return
+    async with SessionLocal() as db:
+        s = await db.get(StartupSession, sid)
+        s.summary = out.model_dump()
+        await db.commit()
+    await emit(sid, "pilot_summary", "summary", out.one_liner, target="summary", detail=out.model_dump())
 
 
 async def _report_task(sid: str) -> str:
@@ -298,12 +358,13 @@ async def _run(sid: str) -> None:
                                                                   ActionItem.approval == "approved"))).scalars().all()
         for a in approved:
             res = await gws.execute(a.id)
-            await emit(sid, "advisor", "tool_result", f"{a.kind}: {a.title} → {res.get('status') or res.get('error')}",
+            await emit(sid, "advisor", "tool_result", (("📅 Booked: " if a.kind == "calendar_event" else "✉️ Draft saved: ") + a.title) if res.get("status") == "executed" else f"😓 Couldn't do “{a.title}”: {res.get('error') or res.get('ref')}",
                        target="advisor", detail=res)
         report = await queue.wait_for(report_task, timeout_s=300)
         if report is None:
-            await emit(sid, "pipeline", "fallback", "WorkBuddy report not ready; the web report is available",
+            await emit(sid, "pipeline", "fallback", "⏳ WorkBuddy's report isn't ready yet; the web report is available meanwhile",
                        target="workbuddy")
+        await _pilot_summary(sid)
         await _set_phase(sid, "done")
     except Exception as e:
         log.exception("pipeline failed")

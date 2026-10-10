@@ -77,6 +77,18 @@ async def confirm_gate(session_id: str, gate: str, decision: str, notes: str = "
 
 
 @server.tool()
+async def ask_session(session_id: str, question: str) -> dict:
+    """Ask StartupBuddy a question about a session's plan (problem, canvas, council, evidence, actions).
+    Answers are friendly and grounded in that session's data. Takes up to ~20 s."""
+    import asyncio
+    from app.agent.assistant import ask
+    try:
+        return await asyncio.wait_for(ask(session_id, question, "workbuddy"), timeout=24)
+    except TimeoutError:
+        return {"reply": "Still thinking about that one. Please check the web app chat in a moment."}
+
+
+@server.tool()
 async def await_next_task(worker_id: str, wait_s: int = 20) -> dict:
     """Long-poll for the next StartupBuddy task (waits up to wait_s seconds, max 25).
 

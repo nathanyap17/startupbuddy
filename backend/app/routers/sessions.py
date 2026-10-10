@@ -22,6 +22,8 @@ router = APIRouter()
 class CreateSession(BaseModel):
     intent: str = Field(min_length=5, max_length=500)
     location_text: str = Field(min_length=2, max_length=200)
+    auto_g1: bool = False
+    auto_g2: bool = False
 
 
 class GateDecision(BaseModel):
@@ -29,6 +31,16 @@ class GateDecision(BaseModel):
     notes: str | None = None
     statement: str | None = None
     action_ids: list[str] = Field(default_factory=list)
+    always: bool = False  # "Always allow": auto-approve this checkpoint in future for this session
+
+
+class ChatIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class SettingsIn(BaseModel):
+    auto_g1: bool | None = None
+    auto_g2: bool | None = None
 
 
 def _iso(d: datetime | None) -> str | None:
@@ -37,15 +49,18 @@ def _iso(d: datetime | None) -> str | None:
 
 def _summary(s: StartupSession) -> dict[str, Any]:
     return {"id": s.id, "title": s.title, "intent": s.intent, "location_text": s.location_text,
-            "phase": s.phase, "origin": s.origin, "error": s.error,
+            "phase": s.phase, "origin": s.origin, "error": s.error, "auto_g1": s.auto_g1, "auto_g2": s.auto_g2,
+            "summary": s.summary,
             "created_at": _iso(s.created_at), "updated_at": _iso(s.updated_at)}
 
 
-async def create_session(intent: str, location_text: str, origin: str) -> dict[str, Any]:
+async def create_session(intent: str, location_text: str, origin: str, auto_g1: bool = False,
+                         auto_g2: bool = False) -> dict[str, Any]:
     async with SessionLocal() as db:
         user = (await db.execute(select(DemoUser).limit(1))).scalar_one()
         title = intent if len(intent) <= 60 else intent[:57] + "…"
-        s = StartupSession(user_id=user.id, title=title, intent=intent, location_text=location_text, origin=origin)
+        s = StartupSession(user_id=user.id, title=title, intent=intent, location_text=location_text, origin=origin,
+                           auto_g1=auto_g1, auto_g2=auto_g2)
         db.add(s)
         await db.commit()
         out = _summary(s)
@@ -62,7 +77,7 @@ async def list_sessions() -> list[dict[str, Any]]:
 
 @router.post("/sessions")
 async def post_session(body: CreateSession) -> dict[str, Any]:
-    return await create_session(body.intent.strip(), body.location_text.strip(), "web")
+    return await create_session(body.intent.strip(), body.location_text.strip(), "web", body.auto_g1, body.auto_g2)
 
 
 async def session_detail(sid: str) -> dict[str, Any]:
@@ -133,6 +148,11 @@ async def decide_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]
         if s.phase != expected:
             raise HTTPException(409, f"session is in phase {s.phase}, not {expected}")
         now = datetime.now(timezone.utc)
+        if body.always:
+            if expected == "gate_g1":
+                s.auto_g1 = True
+            else:
+                s.auto_g2 = True
         if expected == "gate_g1":
             p = (await db.execute(select(ProblemStatement).where(ProblemStatement.session_id == sid)
                                   .order_by(ProblemStatement.version.desc()).limit(1))).scalar_one()
@@ -164,6 +184,33 @@ async def decide_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]
 @router.post("/sessions/{sid}/gates/{gate}")
 async def post_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]:
     return await decide_gate(sid, gate, body)
+
+
+@router.post("/sessions/{sid}/chat")
+async def post_chat(sid: str, body: ChatIn) -> dict[str, Any]:
+    from app.agent.assistant import ask
+    async with SessionLocal() as db:
+        if not await db.get(StartupSession, sid):
+            raise HTTPException(404, "session not found")
+    return await ask(sid, body.message, "web")
+
+
+@router.post("/sessions/{sid}/settings")
+async def post_settings(sid: str, body: SettingsIn) -> dict[str, Any]:
+    """Toggle "Always allow" per checkpoint. Enabling it while that checkpoint is waiting approves it now."""
+    async with SessionLocal() as db:
+        s = await db.get(StartupSession, sid)
+        if not s:
+            raise HTTPException(404, "session not found")
+        if body.auto_g1 is not None:
+            s.auto_g1 = body.auto_g1
+        if body.auto_g2 is not None:
+            s.auto_g2 = body.auto_g2
+        await db.commit()
+        phase, a1, a2 = s.phase, s.auto_g1, s.auto_g2
+    if (phase == "gate_g1" and a1) or (phase == "gate_g2" and a2):
+        await pipeline.auto_approve(sid, phase)
+    return {"auto_g1": a1, "auto_g2": a2}
 
 
 @router.get("/sessions/{sid}/events")
