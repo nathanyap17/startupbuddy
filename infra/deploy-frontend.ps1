@@ -8,7 +8,11 @@ Push-Location "$Root\frontend"
 $env:VITE_API_BASE_URL = $url
 npm run build
 Pop-Location
+# Find the Firebase CLI even when the npm global folder isn't on PATH in this window.
+$firebase = (Get-Command firebase -ErrorAction SilentlyContinue).Source
+if (-not $firebase) { $firebase = Join-Path $env:APPDATA "npm\firebase.cmd" }
+if (-not (Test-Path $firebase)) { throw "Firebase CLI not found. Run: npm i -g firebase-tools" }
 Push-Location $Root
-firebase deploy --only hosting --project $P
+& $firebase deploy --only hosting --project $P
 Pop-Location
 Write-Host "Landing page: https://$P.web.app"
