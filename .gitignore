@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+token.json
+*.token.json
+credentials.json
+client_secret*.json
+service-account*.json
+
+# Local data
+*.db
+*.sqlite
+pgdata/
+backend/data/
+backend/artifacts/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+.firebase/
+
+# Models / caches
+models/
+*.onnx
+*.safetensors
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
