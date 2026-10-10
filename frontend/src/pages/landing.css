@@ -114,3 +114,12 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   .rv, .rv-tilt { opacity: 1; transform: none; transition: none; }
 }
+
+/* floating pill navbar once scrolled (sticky top/margins don't shift page flow) */
+.topbar.glass-bar { top: 0; margin-inline: 0; border-radius: 0; border: 1px solid transparent;
+  transition: top .45s cubic-bezier(.22, .61, .36, 1), margin .45s cubic-bezier(.22, .61, .36, 1), border-radius .45s ease,
+    background .35s ease, border-color .35s ease, box-shadow .35s ease, backdrop-filter .35s ease; }
+.topbar.glass-bar.scrolled { top: 12px; margin-inline: max(16px, calc((100% - 1160px) / 2)); border-radius: 18px;
+  background: rgba(255, 255, 255, .78); border-color: rgba(212, 222, 231, .9); box-shadow: 0 10px 30px rgba(16, 29, 41, .12); }
+@media (max-width: 640px) { .topbar.glass-bar.scrolled { top: 8px; margin-inline: 10px; border-radius: 14px; } }
+@media (prefers-reduced-motion: reduce) { .topbar.glass-bar { transition: none; } }

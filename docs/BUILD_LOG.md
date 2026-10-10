@@ -100,3 +100,4 @@
 - Navbar (landing only, `TopBar glass`): transparent at the top; frosted glass (blur 16px, 62% white, soft border/shadow) once scrolled >12 px; stays pinned; restores at the top.
 - Fixed sticky bug: `#root` had `height: 100%`, so the sticky header left with its 1-viewport container; now `min-height`.
 - Reversible reveal (`.rv` + IntersectionObserver): elements fade/slide in when entering from below; hide again when they leave through the bottom (scrolling up). Card entrances moved from one-time anime.js to this; count-ups, line drawing, wave dots and the architecture graph stay one-time anime.js effects. Reduced motion shows everything statically.
+- Floating navbar: when scrolled it detaches (top 12 px desktop / 8 px phone), insets to the content width, rounds to 18/14 px, 78% white glass + shadow; restores flush at the top. Verified no page-flow shift.
