@@ -61,7 +61,7 @@ async def get_session_status(session_id: str) -> dict:
 
 @server.tool()
 async def confirm_gate(session_id: str, gate: str, decision: str, notes: str = "",
-                       action_ids: list[str] | None = None) -> dict:
+                       action_ids: list[str] | None = None, always: bool = False) -> dict:
     """Pass the USER's decision for a gate. Only call after the user explicitly answered.
 
     Args:
@@ -70,10 +70,12 @@ async def confirm_gate(session_id: str, gate: str, decision: str, notes: str = "
         decision: "approve" or "reject".
         notes: Optional user notes.
         action_ids: For G2, the exact action ids the user approved (others are rejected).
+        always: True only if the user explicitly said "always allow": future checkpoints of this
+            kind in this session are then approved automatically (logged in the feed).
     """
     from app.routers.sessions import GateDecision, decide_gate
     return await decide_gate(session_id, gate, GateDecision(decision=decision, notes=notes or None,
-                                                            action_ids=action_ids or []))
+                                                            action_ids=action_ids or [], always=always))
 
 
 @server.tool()

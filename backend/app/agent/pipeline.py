@@ -222,9 +222,7 @@ async def _run_block(sid: str, key: str, rnd: int, notes: list[str] | None = Non
         try:
             prompt = json.dumps(ctx, ensure_ascii=False, default=str)
             if attempt == 2:
-                prompt += "
-
-Retry: answer directly from the context; call search_knowledge at most once."
+                prompt += "\n\nRetry: answer directly from the context; call search_knowledge at most once."
                 await emit(sid, key, "thought", f"🔁 {label(key)} is taking another pass", target=key)
             out = await run_agent(factories.bmc_agent(sid, key), prompt, BlockOut, sid, key)
             content, status = out.model_dump(exclude={"evidence"}), "done"

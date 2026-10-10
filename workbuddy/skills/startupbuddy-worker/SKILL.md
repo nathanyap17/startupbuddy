@@ -36,7 +36,7 @@ Repeat:
 If the user asks anything about their plan ("is this worth it?", "what's my break-even?"), call `ask_session(session_id, question)` and relay the reply as is. It's friendly and grounded in the session.
 
 ## Always allow
-If the user says "always allow" or "approve everything from now on", pass the decision with `confirm_gate` as usual; the web app's Autopilot switches control future checkpoints.
+Only if the user explicitly says "always allow" / "approve everything from now on", call `confirm_gate(..., always=true)`. Future checkpoints of that kind in this session are then approved automatically and logged in the feed. Never set `always` on your own.
 
 ## Rules
 - Every factual figure has `label` = `sourced` (only with a `source_url` you actually opened), `estimated` (with `method`) or `needs_verification`.
