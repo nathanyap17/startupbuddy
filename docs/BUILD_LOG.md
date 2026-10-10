@@ -90,3 +90,8 @@
 - Owner added `DESIGN.md`, logo and banner (in `../pitch-and-design/`). Copied to `docs/DESIGN.md`, `docs/brand/`, `frontend/public/logo.png` (also the favicon).
 - Frontend restyled: Manrope, navy/slate tokens, light-only; landing hero mirrors the banner (headline + 01–04 ladder, last rung navy); navy problem node, dashed WorkBuddy node; top bar fits phone width (verified no horizontal overflow).
 - README shows the banner, live URLs, run/deploy commands and the team.
+
+## [2026-10-10 19:30 MYT] Animated landing page (anime.js 4.5.0)
+- Sections: hero (word-split headline, staged ladder, orbit of 16 agent dots, sample-run ticker), problem (count-up stats + 6-step "what happens today" story with a drawn line), workflow (drawn pipeline, 2-5-2 BMC waves, 5 council seats, G1/G2 chips), harness (6 guardrail cards), architecture (13-node click-to-explain SVG graph, edges draw in, packets flow along MCP/queue/agent paths), closing CTA, footer.
+- Honest labels: hybrid search shown as "full-text today, vector next"; statuses per node (Built / tested / pending).
+- Motion triggers via IntersectionObserver (content never stuck hidden); `prefers-reduced-motion` skips all animation; no horizontal overflow at phone width (graph scrolls inside its box).
