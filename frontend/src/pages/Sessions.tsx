@@ -39,7 +39,7 @@ export default function Sessions() {
     <>
       <TopBar>
         <span className={`pill ${wb ? "ok" : "warn"}`}><span className="dot" />WorkBuddy {wb ? "online" : "offline"}</span>
-        <span className="pill">Demo account</span>
+        <span className="pill hide-sm">Demo account</span>
       </TopBar>
       <main className="page">
         <h2>Your startup sessions</h2>

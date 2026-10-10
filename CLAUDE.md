@@ -19,7 +19,7 @@ Existing tools write a business plan *for* you from a generic template. StartupB
 
 | Layer | Technology |
 |---|---|
-| Frontend | React + Vite + TypeScript, React Flow (live canvas). Landing page at `/`, web app at `/app`. Firebase Hosting |
+| Frontend | React + Vite + TypeScript, React Flow (live canvas). Design system `docs/DESIGN.md` (Serene Executive Slate, Manrope; light only). Landing page at `/`, web app at `/app`. Firebase Hosting |
 | Backend | FastAPI (Python 3.11+), Pydantic v2, SQLAlchemy 2.0 async. Cloud Run (`asia-southeast1`) |
 | Agents | Google ADK (`google-adk`, pinned; see `WORKSPACE_SETUP.md`) + Vertex AI Gemini (explicit model ID, no `-latest` alias) |
 | Data | PostgreSQL 16 + pgvector. Local: Docker. Cloud: Cloud SQL |

@@ -199,7 +199,7 @@ export default function Workspace() {
         <span className={`pill ${d.workbuddy_online ? "ok" : "warn"}`}><span className="dot" />WorkBuddy {d.workbuddy_online ? "online" : "offline"}</span>
         <span className={`pill ${phaseClass(d.phase)}`}>{PHASE_LABEL[d.phase] ?? d.phase}</span>
         <Link to={`/app/s/${d.id}/report`}><button>Report</button></Link>
-        <Link to="/app"><button className="ghost">All sessions</button></Link>
+        <Link className="hide-sm" to="/app"><button className="ghost">All sessions</button></Link>
       </TopBar>
       <div className="ws">
         <aside className="ws-col">

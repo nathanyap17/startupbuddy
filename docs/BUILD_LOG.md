@@ -85,3 +85,8 @@
 - First deploy failed: `.gcloudignore` pattern `workbuddy/` also excluded `backend/app/workbuddy` → `ModuleNotFoundError`. Fixed by anchoring patterns (`/workbuddy/`). Lesson: check `gcloud meta list-files-for-upload` before deploying.
 - Live: https://startupbuddy-api-960127792850.asia-southeast1.run.app. `/health` ok + DB ok; `/mcp` lists 8 tools with the cloud key.
 - Cloud smoke test (sim worker over cloud /mcp): "bubble tea kiosk near UNIMAS, Kota Samarahan" reached G1 with Places (10 competitors) and Gemini working under the Cloud Run service account. Test session deleted.
+
+## [2026-10-10 18:55 MYT] UI: Serene Executive Slate design applied
+- Owner added `DESIGN.md`, logo and banner (in `../pitch-and-design/`). Copied to `docs/DESIGN.md`, `docs/brand/`, `frontend/public/logo.png` (also the favicon).
+- Frontend restyled: Manrope, navy/slate tokens, light-only; landing hero mirrors the banner (headline + 01–04 ladder, last rung navy); navy problem node, dashed WorkBuddy node; top bar fits phone width (verified no horizontal overflow).
+- README shows the banner, live URLs, run/deploy commands and the team.
