@@ -26,6 +26,7 @@ lease expires → re-queued (attempts+1, max 2) · deadline passes → status=ex
 | `submit_task_result` | `task_id`, `result_json: str`, `artifact_urls?: list[str]` | `{ok, validation_errors[]}` | Rejected if JSON fails `output_schema` → worker may retry |
 | `fail_task` | `task_id`, `reason` | `{ok}` | Agent falls back immediately |
 | `upload_artifact` | `task_id`, `filename`, `content_base64` | `{url}` | Files (DOCX/XLSX/PPTX) stored in GCS bucket; size cap 10 MB |
+| `ask_session` | `session_id`, `question` | `{reply}` | Friendly, grounded Q&A about the session (Session Assistant); ≤24 s |
 | `get_session_summary` | `session_id` | markdown | Lets WorkBuddy narrate results in chat |
 
 Tool parameters are **flat scalars/lists** (ADK/MCP pattern; avoid a lone model parameter).

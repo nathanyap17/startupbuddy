@@ -5,7 +5,9 @@ export type Phase = "intake" | "problem" | "gate_g1" | "bmc" | "council" | "deli
 export interface SessionSummary {
   id: string; title: string; intent: string; location_text: string; phase: Phase; origin: string;
   error: string | null; created_at: string; updated_at: string;
+  auto_g1: boolean; auto_g2: boolean; summary: PilotSummary | null;
 }
+export interface PilotSummary { one_liner: string; verdict: "go" | "revise" | "stop"; highlights: string[]; first_step: string; }
 export interface Evidence { scope: string; claim: string; value: string | null; label: "sourced" | "estimated" | "needs_verification"; source_url: string | null; method: string | null; produced_by: string; }
 export interface Block { key: string; status: string; round?: number; content: { summary?: string; items?: string[]; assumptions?: string[] }; }
 export interface Review { seat: string; scores: Record<string, number>; strengths: string[]; risks: string[]; must_verify: string[]; improve: string[]; verdict: string; }
@@ -32,10 +34,14 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => j<{ ok: boolean; workbuddy_online: boolean; google_workspace_linked: boolean; model: string }>("/health"),
   list: () => j<SessionSummary[]>("/sessions"),
-  create: (intent: string, location_text: string) => j<SessionSummary>("/sessions", { method: "POST", body: JSON.stringify({ intent, location_text }) }),
+  create: (intent: string, location_text: string, auto_g1 = false, auto_g2 = false) =>
+    j<SessionSummary>("/sessions", { method: "POST", body: JSON.stringify({ intent, location_text, auto_g1, auto_g2 }) }),
+  chat: (id: string, message: string) => j<{ reply: string }>(`/sessions/${id}/chat`, { method: "POST", body: JSON.stringify({ message }) }),
+  settings: (id: string, body: { auto_g1?: boolean; auto_g2?: boolean }) =>
+    j<{ auto_g1: boolean; auto_g2: boolean }>(`/sessions/${id}/settings`, { method: "POST", body: JSON.stringify(body) }),
   get: (id: string) => j<SessionDetail>(`/sessions/${id}`),
   remove: (id: string) => j<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }),
-  gate: (id: string, gate: "G1" | "G2", body: { decision: string; statement?: string; notes?: string; action_ids?: string[] }) =>
+  gate: (id: string, gate: "G1" | "G2", body: { decision: string; statement?: string; notes?: string; action_ids?: string[]; always?: boolean }) =>
     j<{ ok: boolean; phase: string }>(`/sessions/${id}/gates/${gate}`, { method: "POST", body: JSON.stringify(body) }),
   retryAction: (id: string, aid: string) => j<{ status?: string; error?: string }>(`/sessions/${id}/actions/${aid}/retry`, { method: "POST" }),
   rerenderDocx: (id: string) => j<{ ok: boolean }>(`/sessions/${id}/report/docx`, { method: "POST" }),

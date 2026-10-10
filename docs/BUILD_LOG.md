@@ -113,3 +113,13 @@
 - Backend renders the DOCX from `report_markdown` (python-docx; strips lone surrogates/control chars found in the real report) and attaches it as an artifact; report-builder skill v0.3 forbids file creation/other doc skills. Tested on the real report: 44 KB, 122 paragraphs, 8 tables.
 - `POST /sessions/{id}/report/docx` re-renders from the latest WorkBuddy result (backfill); `POST /sessions/{id}/actions/{aid}/retry` re-runs approved-but-failed actions (Retry button in the Advisor inspector).
 - `backend/scripts/link_google.py` creates the Google token (Calendar + Gmail compose) for Secret Manager `gws-token`.
+
+## [2026-10-10 22:40 MYT] UX upgrade: Studio feed, progressive canvas, Always allow, pilot summary
+### What changed
+- Backend: Gemini thought summaries (`include_thoughts`) streamed as `thinking` events; humanised emoji messages for phases, tools and agents; Session Assistant chat (`POST /sessions/{id}/chat`, MCP `ask_session`) grounded in the session context; "Always allow" per checkpoint (`auto_g1/auto_g2`, `POST /sessions/{id}/settings`, `always` on gate decisions; auto-approvals logged in the feed); pilot summary one-liner at the end; one retry per BMC block; search_knowledge capped at 2 calls; idempotent `ALTER TABLE` migrations at startup.
+- Frontend: three panes. Left "Studio": chat + live feed (agent tags, data-source chips, collapsible thinking, suggestions, composer). Center: stepper (Ground→Build→Challenge→Act→Pilot), pilot-summary banner, canvas where agent cards appear only when reached (pop-in, skeleton bones, blueprint robots, blueprint grid, animated handoffs, 0.375rem status chips Verified/Sourced/Refinement flag), inspection drawer. Right "Decisions": checkpoint cards with Approve / Always allow, Autopilot switches, 5-seat council scorecards, first-steps checklist with Retry, report + DOCX.
+### Verified (local, sim worker)
+- Auto-approved full run (277 s): 55 thinking events, pilot summary produced; chat reply in ~10 s with labelled figures.
+- Live UI: only reached nodes render; wave-1 skeletons + live thinking visible; G1 Approve from the new card.
+### Still open
+- Knowledge base nearly empty ("Found 0 references"): fill with verified MY/Sarawak sources next.
