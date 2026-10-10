@@ -46,3 +46,26 @@
 ## [2026-10-10 15:45 MYT] Docs approved; APIs enabled
 - Owner approved the docs; HOLD lifted (owner runs pushes/deploys).
 - 12 Google Cloud APIs enabled on `dormathon-workspace-1`. WorkBuddy desktop version 5.7.6.
+
+## [2026-10-10 16:30 MYT] EXP-1 and EXP-2 passed: WorkBuddy task queue is viable
+### Verified
+- Throwaway server `exp-mcp-echo` on Cloud Run (mcp 2.2.0 `MCPServer`, stateless streamable HTTP, `X-API-Key`).
+- WorkBuddy 5.7.6 connected via `mcp.json` (`"type": "http"`, header). 3/3 tools enabled.
+- One WorkBuddy turn: 10 long-polls (`wait_s=20`), 3 dummy tasks received and submitted correctly; 14.02 credits, about 4 min.
+### Lesson
+- URL must end in `/mcp` (else 404 "SSE error").
+- Idle polls cost credits (~1.4 each): cap idle polls at 20; enqueue WorkBuddy tasks in bursts.
+### Next
+- Delete `exp-mcp-echo` once the real backend is deployed.
+
+## [2026-10-10 17:05 MYT] Backend pilot: full pipeline runs locally
+### What changed
+- FastAPI + ADK 2.6.1 backend: models (create_all), WorkBuddy queue + `/mcp` (9 tools), 16 agents, pipeline with G1/G2, Places tool, KB search, Calendar/Gmail-draft actions (approval-checked), REST + SSE, report markdown.
+- Local Postgres on host port **5433** (a native Postgres occupies 5432).
+- Gemini `gemini-3.5-flash` @ `global`, `thinking_level=LOW` (default thinking timed out the coordinator at 150 s).
+### Verified (local, simulated WorkBuddy worker `sandbox/sim_worker.py` over real `/mcp`)
+- Kolo mee @ Padungan: Phase 1 to G1; after approval 9 blocks, 5 council reviews (2 go / 3 revise → overall revise), 4 advisor actions, 33 evidence items (12 sourced / 13 estimated / 8 needs_verification), both WorkBuddy tasks succeeded. ~129 s from G1 to G2.
+### Still unverified
+- Real WorkBuddy doing desk_research / report_builder (EXP-3); Google Workspace actions (needs `client_secret.json` + token); Cloud Run deploy; frontend.
+### Pilot deviations from docs
+- REST responses are dicts, not shared Pydantic response models (one-contract rule deferred); no Alembic; full-text search only; council revision loop not run (single pass).

@@ -76,7 +76,7 @@ Full list with examples: `.claude/skills/startupbuddy-rules/SKILL.md`.
 | | LOCAL | CLOUD |
 |---|---|---|
 | Backend | `uvicorn` on :8000 | Cloud Run `startupbuddy-api` |
-| DB | Docker `pgvector/pgvector:pg16` on :5432 | Cloud SQL `startupbuddy-db` |
+| DB | Docker `pgvector/pgvector:pg16` on :5433 (host; a native Postgres uses 5432) | Cloud SQL `startupbuddy-db` |
 | Frontend | Vite on :5173 | Firebase Hosting (project `dormathon-workspace-1`) |
 | WorkBuddy MCP URL | n/a: WorkBuddy can't reach localhost; test WorkBuddy against Cloud Run | `https://<run-url>/mcp` (direct Run URL, **not** via Firebase rewrite: ~60 s cut-off breaks SSE) |
 

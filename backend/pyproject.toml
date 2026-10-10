@@ -1,0 +1,27 @@
+[project]
+name = "startupbuddy-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "sqlalchemy[asyncio]>=2.0",
+  "asyncpg",
+  "pydantic-settings",
+  "google-adk==2.6.1",
+  "google-genai",
+  "mcp==2.2.0",
+  "httpx",
+  "python-ulid",
+  "google-api-python-client",
+  "google-auth-oauthlib",
+  "google-cloud-storage",
+  "python-dotenv",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

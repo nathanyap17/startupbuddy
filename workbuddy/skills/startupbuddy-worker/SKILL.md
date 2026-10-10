@@ -15,7 +15,7 @@ Requires the **StartupBuddy** MCP connector (tools: `start_session`, `await_next
 ## Worker loop
 Repeat:
 1. Call `await_next_task(worker_id="workbuddy-<machine>", wait_s=20)`.
-2. If `task` is null: continue looping (say nothing). After 90 empty polls in a row, stop and tell the user.
+2. If `task` is null: continue looping (say nothing). After 20 empty polls in a row (~8 min), stop and tell the user (idle polls cost credits: EXP-2 measured about 1.4 credits per poll).
 3. If a task arrives: open the skill named in `task.skill` (`startupbuddy-desk-research`, `startupbuddy-report-builder`, `startupbuddy-financial-sheet`, `startupbuddy-one-pager`) and follow it with `task.inputs`.
 4. For long work, call `heartbeat_task(task_id)` about every 60 s.
 5. Upload files with `upload_artifact`, then call `submit_task_result(task_id, result_json, artifact_urls)`. `result_json` must match `task.output_schema`. If `validation_errors` come back, fix and resubmit once; otherwise `fail_task`.

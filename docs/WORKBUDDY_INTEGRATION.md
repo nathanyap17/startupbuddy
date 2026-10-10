@@ -31,13 +31,13 @@ In MCP, WorkBuddy is the **client**. Our server can only answer calls. WorkBuddy
      }
    }
    ```
-   The key lives only in this local file and in Secret Manager, never in the repo. The format follows the CodeBuddy `mcpServers` schema (`type` `http`/`sse`, `url`, `headers`); confirm in EXP-1 that `"type": "http"` is accepted.
+   **The URL must end in `/mcp`** (EXP-1: without it WorkBuddy hits `/` and shows "SSE error: Non-200 status code (404)"). The key lives only in this local file and in Secret Manager, never in the repo. The format follows the CodeBuddy `mcpServers` schema (`type` `http`/`sse`, `url`, `headers`); confirm in EXP-1 that `"type": "http"` is accepted.
 3. Import skills from `workbuddy/skills/` (the worker plus four task skills).
 4. Start a **new** WorkBuddy session so the connector loads.
 5. Test: ask WorkBuddy "list StartupBuddy tools", then "Start StartupBuddy worker".
 
 ## Run-time behaviour
-- The worker skill loops: `await_next_task` → if task, load the named skill, do the work, `upload_artifact` for files, `submit_task_result` → repeat. Stops when the user says stop or after N idle polls (configurable, default 90 ≈ 30 min).
+- The worker skill loops: `await_next_task` → if task, load the named skill, do the work, `upload_artifact` for files, `submit_task_result` → repeat. Stops when the user says stop or after 20 idle polls (≈8 min). EXP-2: ≈1.4 credits per poll, ≈25–30 s per empty poll at `wait_s=20`.
 - Web app shows **WorkBuddy: online** when a poll arrived in the last 60 s (from `worker_id` heartbeat).
 
 ## Demo checklist

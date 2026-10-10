@@ -5,8 +5,8 @@
 |---|---|---|
 | Folder structure + docs | done 2026-10-10 | this commit (pending owner review) |
 | ADK refs cloned | done 2026-10-10 | `../adk-python` at v2.6.1, `../adk-docs` main 2026-10-09 |
-| WorkBuddy custom connector reaches our MCP | 🔴 untested | EXP-1 |
-| Long-poll worker loop | 🔴 untested | EXP-2 |
+| WorkBuddy custom connector reaches our MCP | ✅ 2026-10-10 | EXP-1 (Cloud Run, X-API-Key, URL must end `/mcp`) |
+| Long-poll worker loop | ✅ 2026-10-10 | EXP-2: 10 polls, 3 tasks submitted, 14.02 credits |
 | Skill returns schema-valid JSON | 🟠 untested | EXP-3 |
 | Gemini model id/region | 🟠 untested | EXP-4 |
 | Embedding backend | 🟡 untested | EXP-5 |
