@@ -29,9 +29,9 @@
 
 | Environment | URL | Notes |
 |---|---|---|
-| Backend (Cloud Run `startupbuddy-api`) | > not deployed | capture once after first deploy |
+| Backend (Cloud Run `startupbuddy-api`) | https://startupbuddy-api-960127792850.asia-southeast1.run.app | deployed 2026-10-10 18:20 MYT; alias https://startupbuddy-api-da73njvkmq-as.a.run.app |
 | Frontend (Firebase Hosting) | > not deployed | `https://dormathon-workspace-1.web.app` expected once Firebase is attached |
-| WorkBuddy connector | `<backend>/mcp` | |
+| WorkBuddy connector | https://startupbuddy-api-960127792850.asia-southeast1.run.app/mcp | key = Secret `mcp-api-key` (copy in `../sandbox/.mcp_api_key_cloud`) |
 | GitHub | https://github.com/nathanyap17/startupbuddy | not pushed yet |
 
 ## Post-deploy checklist

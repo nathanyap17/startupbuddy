@@ -80,3 +80,8 @@
 - `docker build` OK; container imports the app.
 ### Still unverified
 - Cloud deploy; real WorkBuddy run of desk_research/report_builder; Google Workspace actions.
+
+## [2026-10-10 18:25 MYT] Backend live on Cloud Run
+- First deploy failed: `.gcloudignore` pattern `workbuddy/` also excluded `backend/app/workbuddy` → `ModuleNotFoundError`. Fixed by anchoring patterns (`/workbuddy/`). Lesson: check `gcloud meta list-files-for-upload` before deploying.
+- Live: https://startupbuddy-api-960127792850.asia-southeast1.run.app. `/health` ok + DB ok; `/mcp` lists 8 tools with the cloud key.
+- Cloud smoke test (sim worker over cloud /mcp): "bubble tea kiosk near UNIMAS, Kota Samarahan" reached G1 with Places (10 competitors) and Gemini working under the Cloud Run service account. Test session deleted.
