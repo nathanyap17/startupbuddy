@@ -95,3 +95,22 @@ html { scroll-behavior: smooth; }
 .footer-brand img { width: 28px; height: 28px; border-radius: 8px; }
 .footer-brand b { color: var(--brand); }
 .arch-explain .pill { white-space: normal; }
+
+/* ---------- glass navbar (landing) ---------- */
+.topbar.glass-bar { position: sticky; top: 0; background: transparent; border-bottom-color: transparent; box-shadow: none;
+  transition: background .35s ease, border-color .35s ease, box-shadow .35s ease, backdrop-filter .35s ease; }
+.topbar.glass-bar.scrolled { background: rgba(247, 249, 255, .62); -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
+  border-bottom-color: rgba(212, 222, 231, .75); box-shadow: 0 6px 24px rgba(16, 29, 41, .07); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar.glass-bar.scrolled { background: rgba(247, 249, 255, .95); }
+}
+
+/* ---------- reversible scroll reveal ---------- */
+.rv { opacity: 0; transform: translateY(28px); transition: opacity .6s cubic-bezier(.22, .61, .36, 1), transform .7s cubic-bezier(.22, .61, .36, 1);
+  transition-delay: calc(var(--d, 0) * 70ms); will-change: opacity, transform; }
+.rv.in { opacity: 1; transform: none; }
+.rv-tilt { transform: translateY(28px) perspective(800px) rotateX(-10deg); transform-origin: top center; }
+.rv-tilt.in { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rv, .rv-tilt { opacity: 1; transform: none; transition: none; }
+}

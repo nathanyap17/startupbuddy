@@ -10,7 +10,8 @@
   --radius: 1rem; --radius-sm: .5rem; --shadow: 0 1px 2px rgba(16,29,41,.04), 0 6px 20px rgba(16,29,41,.05);
 }
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+html, body { height: 100%; }
+#root { min-height: 100%; }
 body { margin: 0; font-family: Manrope, system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 22px; }
 a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; }

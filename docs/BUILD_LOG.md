@@ -95,3 +95,8 @@
 - Sections: hero (word-split headline, staged ladder, orbit of 16 agent dots, sample-run ticker), problem (count-up stats + 6-step "what happens today" story with a drawn line), workflow (drawn pipeline, 2-5-2 BMC waves, 5 council seats, G1/G2 chips), harness (6 guardrail cards), architecture (13-node click-to-explain SVG graph, edges draw in, packets flow along MCP/queue/agent paths), closing CTA, footer.
 - Honest labels: hybrid search shown as "full-text today, vector next"; statuses per node (Built / tested / pending).
 - Motion triggers via IntersectionObserver (content never stuck hidden); `prefers-reduced-motion` skips all animation; no horizontal overflow at phone width (graph scrolls inside its box).
+
+## [2026-10-10 19:50 MYT] Landing: glass navbar + reversible scroll reveal
+- Navbar (landing only, `TopBar glass`): transparent at the top; frosted glass (blur 16px, 62% white, soft border/shadow) once scrolled >12 px; stays pinned; restores at the top.
+- Fixed sticky bug: `#root` had `height: 100%`, so the sticky header left with its 1-viewport container; now `min-height`.
+- Reversible reveal (`.rv` + IntersectionObserver): elements fade/slide in when entering from below; hide again when they leave through the bottom (scrolling up). Card entrances moved from one-time anime.js to this; count-ups, line drawing, wave dots and the architecture graph stay one-time anime.js effects. Reduced motion shows everything statically.

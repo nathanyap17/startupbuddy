@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { animate, createDrawable, createTimeline, splitText, stagger } from "animejs";
 import TopBar from "../components/TopBar";
 import "./landing.css";
 import ArchitectureGraph from "../components/ArchitectureGraph";
-import { reducedMotion, useReveal } from "../components/motion";
+import { reducedMotion, useReveal, useScrollReveal } from "../components/motion";
+
+/** Stagger index for the reversible scroll reveal (.rv). */
+const rvd = (i: number) => ({ "--d": i }) as CSSProperties;
 
 const REPO = "https://github.com/nathanyap17/startupbuddy";
 
@@ -129,28 +132,27 @@ function Problem() {
       const o = { v: 0 };
       return animate(o, { v: s.n, duration: 1600, delay: i * 150, ease: "outExpo", onUpdate: () => { nums[i].textContent = s.fmt(o.v); } });
     });
-    const a = animate(el.querySelectorAll(".stat, .story-step"), { opacity: [0, 1], y: [24, 0], duration: 700, delay: stagger(80), ease: "outQuart" });
     const line = animate(createDrawable(el.querySelectorAll(".story-line")), { draw: ["0 0", "0 1"], duration: 1600, ease: "inOutQuad", delay: 300 });
-    return () => { anims.forEach((x) => x.revert()); a.revert(); line.revert(); };
+    return () => { anims.forEach((x) => x.revert()); line.revert(); };
   });
   return (
     <section className="block" ref={ref} id="problem">
-      <div className="eyebrow">The problem</div>
-      <h2>Ideas stall before the first real conversation</h2>
-      <p className="muted section-lead">
+      <div className="eyebrow rv">The problem</div>
+      <h2 className="rv" style={rvd(1)}>Ideas stall before the first real conversation</h2>
+      <p className="muted section-lead rv" style={rvd(2)}>
         Young Malaysians who want to start a business get stuck between "I have an idea" and "I'm talking to the right
         people about a validated plan". They don't lack app builders; they lack local validation and a path to the right people.
       </p>
       <div className="grid-3">
-        {STATS.map((s) => (
-          <div className="card stat" key={s.s}><b>{s.fmt(s.n)}</b>{s.d}<div className="muted small" style={{ marginTop: 8 }}>Source: {s.s}</div></div>
+        {STATS.map((s, i) => (
+          <div className="card stat rv" style={rvd(i)} key={s.s}><b>{s.fmt(s.n)}</b>{s.d}<div className="muted small" style={{ marginTop: 8 }}>Source: {s.s}</div></div>
         ))}
       </div>
-      <h3 className="story-h">What happens today: a student in Kuching wants to sell kolo mee near Padungan</h3>
+      <h3 className="story-h rv">What happens today: a student in Kuching wants to sell kolo mee near Padungan</h3>
       <div className="story">
         <svg className="story-svg" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden="true"><path className="story-line" d="M0,4 L1000,4" /></svg>
         {STORY.map(([t, d], i) => (
-          <div className="story-step" key={t}><div className="story-n">{i + 1}</div><b>{t}</b><span>{d}</span></div>
+          <div className="story-step rv" style={rvd(i)} key={t}><div className="story-n">{i + 1}</div><b>{t}</b><span>{d}</span></div>
         ))}
       </div>
     </section>
@@ -161,21 +163,19 @@ function Workflow() {
   const ref = useReveal<HTMLElement>((el) => {
     const tl = createTimeline({ defaults: { ease: "outQuart" } })
       .add(createDrawable(el.querySelectorAll(".flow-line")), { draw: ["0 0", "0 1"], duration: 1400, ease: "inOutQuad" })
-      .add(el.querySelectorAll(".phase"), { opacity: [0, 1], y: [30, 0], duration: 700, delay: stagger(160) }, 200)
-      .add(el.querySelectorAll(".gate-chip"), { opacity: [0, 1], scale: [0.6, 1], duration: 500, delay: stagger(300), ease: "outBack(2)" }, "-=300")
-      .add(el.querySelectorAll(".wave-dot"), { scale: [0, 1], duration: 400, delay: stagger(60), ease: "outBack(2)" }, "-=600");
+      .add(el.querySelectorAll(".wave-dot"), { scale: [0, 1], duration: 400, delay: stagger(60), ease: "outBack(2)" }, 400);
     const pulse = animate(el.querySelectorAll(".wave-dot"), { opacity: [1, 0.45, 1], duration: 1800, delay: stagger(120), loop: true, ease: "inOutSine" });
     return () => { tl.revert(); pulse.revert(); };
   });
   return (
     <section className="block" ref={ref} id="workflow">
-      <div className="eyebrow">The solution · workflow</div>
-      <h2>One sentence in. Four phases. Two checkpoints.</h2>
-      <p className="muted section-lead">The founder types one goal; agents plan, execute, collaborate and validate, and only stop where a human decision belongs.</p>
+      <div className="eyebrow rv">The solution · workflow</div>
+      <h2 className="rv" style={rvd(1)}>One sentence in. Four phases. Two checkpoints.</h2>
+      <p className="muted section-lead rv" style={rvd(2)}>The founder types one goal; agents plan, execute, collaborate and validate, and only stop where a human decision belongs.</p>
       <div className="flow">
         <svg className="flow-svg" viewBox="0 0 1000 10" preserveAspectRatio="none" aria-hidden="true"><path className="flow-line" d="M0,5 L1000,5" /></svg>
         {PHASES.map((p, i) => (
-          <div className="phase card" key={p.k}>
+          <div className="phase card rv" style={rvd(i)} key={p.k}>
             <div className="phase-k">{p.k}</div>
             <h3>{p.t}</h3>
             <p className="muted">{p.d}</p>
@@ -198,18 +198,14 @@ function Workflow() {
 }
 
 function Harness() {
-  const ref = useReveal<HTMLElement>((el) => {
-    const a = animate(el.querySelectorAll(".harness-card"), { opacity: [0, 1], y: [24, 0], rotateX: [-12, 0], duration: 700, delay: stagger(90, { grid: [3, 2], from: "first" }), ease: "outQuart" });
-    return () => a.revert();
-  });
   return (
-    <section className="block" ref={ref} id="harness">
-      <div className="eyebrow">The harness</div>
-      <h2>Guardrails that make the agents trustworthy</h2>
-      <p className="muted section-lead">Autonomy where it helps, code-enforced limits where it matters.</p>
+    <section className="block" id="harness">
+      <div className="eyebrow rv">The harness</div>
+      <h2 className="rv" style={rvd(1)}>Guardrails that make the agents trustworthy</h2>
+      <p className="muted section-lead rv" style={rvd(2)}>Autonomy where it helps, code-enforced limits where it matters.</p>
       <div className="grid-3">
         {HARNESS.map(([t, d], i) => (
-          <div className="card harness-card" key={t}><div className="h-idx">{String(i + 1).padStart(2, "0")}</div><h3>{t}</h3><p className="muted">{d}</p></div>
+          <div className="card harness-card rv rv-tilt" style={rvd(i)} key={t}><div className="h-idx">{String(i + 1).padStart(2, "0")}</div><h3>{t}</h3><p className="muted">{d}</p></div>
         ))}
       </div>
     </section>
@@ -219,25 +215,24 @@ function Harness() {
 function Architecture() {
   return (
     <section className="block" id="architecture">
-      <div className="eyebrow">Architecture · click to explore</div>
-      <h2>16 agents on Google Cloud, WorkBuddy in the loop</h2>
-      <p className="muted section-lead">
+      <div className="eyebrow rv">Architecture · click to explore</div>
+      <h2 className="rv" style={rvd(1)}>16 agents on Google Cloud, WorkBuddy in the loop</h2>
+      <p className="muted section-lead rv" style={rvd(2)}>
         Agents run on Cloud Run with Google ADK and Gemini. WorkBuddy connects over MCP and pulls work from a task queue.
         Knowledge is retrieved with hybrid search (full-text today, vector next). Click any box to see what it does.
       </p>
-      <ArchitectureGraph />
+      <div className="rv" style={rvd(3)}><ArchitectureGraph /></div>
     </section>
   );
 }
 
 function ClosingCta() {
   const ref = useReveal<HTMLElement>((el) => {
-    const a = animate(el, { opacity: [0, 1], y: [30, 0], duration: 800, ease: "outQuart" });
     const b = animate(el.querySelectorAll(".closing-glow"), { scale: [0.9, 1.08], opacity: [0.5, 0.9], duration: 2400, loop: true, alternate: true, ease: "inOutSine" });
-    return () => { a.revert(); b.revert(); };
+    return () => { b.revert(); };
   });
   return (
-    <section className="block closing card" ref={ref}>
+    <section className="block closing card rv" ref={ref}>
       <span className="closing-glow" aria-hidden="true" />
       <div className="eyebrow" style={{ color: "var(--brand-dim)" }}>Try it</div>
       <h2>Bring one sentence. Leave with a plan and a meeting.</h2>
@@ -251,22 +246,24 @@ function ClosingCta() {
 }
 
 export default function Landing() {
+  const main = useRef<HTMLElement>(null);
+  useScrollReveal(main);
   return (
     <>
-      <TopBar>
+      <TopBar glass>
         <a className="hide-sm" href="#workflow">Workflow</a>
         <a className="hide-sm" href="#architecture">Architecture</a>
         <a className="hide-sm" href={REPO} target="_blank" rel="noreferrer">GitHub</a>
         <Link to="/app"><button className="primary">Open demo app</button></Link>
       </TopBar>
-      <main className="landing">
+      <main className="landing" ref={main}>
         <Hero />
         <Problem />
         <Workflow />
         <Harness />
         <Architecture />
         <ClosingCta />
-        <footer className="footer">
+        <footer className="footer rv">
           <div className="footer-brand"><img src="/logo.png" alt="" /><b>StartupBuddy</b><span className="muted">From idea to first meeting.</span></div>
           <div className="muted small">
             Team SMILING FACE WITH SUNGLASSES: Nathan Yap, Abraham Pang, Malcolm Sim, Zoe Tan · Dormathon 2026, Track 2: WorkBuddy Agentic Solutions<br />
