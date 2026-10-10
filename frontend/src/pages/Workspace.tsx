@@ -79,7 +79,7 @@ function GateG2({ d, onDone }: { d: SessionDetail; onDone: () => void }) {
   );
 }
 
-function Inspector({ d, sel }: { d: SessionDetail; sel: string }) {
+function Inspector({ d, sel, onChanged }: { d: SessionDetail; sel: string; onChanged: () => void }) {
   if (sel === "problem" && d.problem) {
     const p = d.problem;
     const comps = p.details.competitors ?? [];
@@ -136,6 +136,7 @@ function Inspector({ d, sel }: { d: SessionDetail; sel: string }) {
             <span className="small muted">from {a.source_agent} · <span className={`pill ${a.approval === "executed" ? "ok" : a.approval === "rejected" ? "" : a.approval === "exec_failed" ? "bad" : "warn"}`}>{a.approval}</span></span>
             {a.external_url && <a className="small" href={a.external_url} target="_blank" rel="noreferrer">Open in Google</a>}
             {a.approval === "exec_failed" && <span className="small muted">{a.external_ref}</span>}
+            {a.approval === "exec_failed" && <button className="small" onClick={() => api.retryAction(d.id, a.id).then(onChanged).catch((e) => alert(String(e)))}>Retry</button>}
           </div>
         ))}
         {!d.actions.length && <p className="muted">No actions yet.</p>}
@@ -229,7 +230,7 @@ export default function Workspace() {
             {d.phase === "gate_g1" && <GateG1 d={d} onDone={refresh} />}
             {d.phase === "gate_g2" && <GateG2 d={d} onDone={refresh} />}
           </div>
-          <Inspector d={d} sel={sel} />
+          <Inspector d={d} sel={sel} onChanged={refresh} />
         </aside>
       </div>
     </>

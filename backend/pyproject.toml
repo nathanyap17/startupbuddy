@@ -17,6 +17,7 @@ dependencies = [
   "google-auth-oauthlib",
   "google-cloud-storage",
   "python-dotenv",
+  "python-docx>=1.2.0",
 ]
 
 [dependency-groups]

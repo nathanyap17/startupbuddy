@@ -101,3 +101,15 @@
 - Fixed sticky bug: `#root` had `height: 100%`, so the sticky header left with its 1-viewport container; now `min-height`.
 - Reversible reveal (`.rv` + IntersectionObserver): elements fade/slide in when entering from below; hide again when they leave through the bottom (scrolling up). Card entrances moved from one-time anime.js to this; count-ups, line drawing, wave dots and the architecture graph stay one-time anime.js effects. Reduced motion shows everything statically.
 - Floating navbar: when scrolled it detaches (top 12 px desktop / 8 px phone), insets to the content width, rounds to 18/14 px, 78% white glass + shadow; restores flush at the top. Verified no page-flow shift.
+
+## [2026-10-10 20:45 MYT] First real WorkBuddy end-to-end run: PASS (EXP-3)
+### Verified (owner, WorkBuddy 5.7.6, cloud backend)
+- One prompt in WorkBuddy ("Use StartupBuddy: I want to sell kolo mee near Padungan, Kuching") → `start_session` → app link → worker loop.
+- desk_research: 11 findings (10 sourced, 1 estimated) + 6 regulations, first attempt. report_builder: 15.4k-char report + local DOCX. G1 and G2 relayed through WorkBuddy. Council verdict GO, 43 evidence items. ~77 credits for the whole run.
+- G2 actions → `exec_failed: Google account not linked` (expected; token not set up yet).
+### Issue
+- WorkBuddy showed "工具「Skill」渲染失败" (its UI failed to render a Skill tool card) while hopping tencent-docx → minimax-docx → a C# script to build the DOCX: slow and credit-heavy.
+### Fix
+- Backend renders the DOCX from `report_markdown` (python-docx; strips lone surrogates/control chars found in the real report) and attaches it as an artifact; report-builder skill v0.3 forbids file creation/other doc skills. Tested on the real report: 44 KB, 122 paragraphs, 8 tables.
+- `POST /sessions/{id}/report/docx` re-renders from the latest WorkBuddy result (backfill); `POST /sessions/{id}/actions/{aid}/retry` re-runs approved-but-failed actions (Retry button in the Advisor inspector).
+- `backend/scripts/link_google.py` creates the Google token (Calendar + Gmail compose) for Secret Manager `gws-token`.

@@ -275,7 +275,7 @@ async def _report_task(sid: str) -> str:
     from app.routers.sessions import build_report_markdown
     md = await build_report_markdown(sid)
     return await queue.enqueue(sid, "report_builder", {"session_summary_markdown": md[:30000],
-                                                       "format": "DOCX (and PDF if available)"}, deadline_s=600)
+                                                       "format": "Markdown only (StartupBuddy renders the DOCX)"}, deadline_s=600)
 
 
 # ---------------------------------------------------------------- run

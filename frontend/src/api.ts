@@ -37,6 +37,8 @@ export const api = {
   remove: (id: string) => j<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }),
   gate: (id: string, gate: "G1" | "G2", body: { decision: string; statement?: string; notes?: string; action_ids?: string[] }) =>
     j<{ ok: boolean; phase: string }>(`/sessions/${id}/gates/${gate}`, { method: "POST", body: JSON.stringify(body) }),
+  retryAction: (id: string, aid: string) => j<{ status?: string; error?: string }>(`/sessions/${id}/actions/${aid}/retry`, { method: "POST" }),
+  rerenderDocx: (id: string) => j<{ ok: boolean }>(`/sessions/${id}/report/docx`, { method: "POST" }),
   report: async (id: string) => (await fetch(`${API}/sessions/${id}/report`)).text(),
   eventsUrl: (id: string) => `${API}/sessions/${id}/events`,
 };

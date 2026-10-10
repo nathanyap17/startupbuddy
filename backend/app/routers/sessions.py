@@ -243,6 +243,39 @@ async def get_report(sid: str) -> str:
     return await build_report_markdown(sid)
 
 
+@router.post("/sessions/{sid}/report/docx")
+async def rerender_docx(sid: str) -> dict[str, Any]:
+    """(Re)build the DOCX from the latest WorkBuddy report_builder result."""
+    from app.workbuddy.queue import _store_report_docx
+    async with SessionLocal() as db:
+        t = (await db.execute(select(WorkbuddyTask).where(WorkbuddyTask.session_id == sid, WorkbuddyTask.skill == "report_builder",
+                                                          WorkbuddyTask.status == "succeeded")
+                              .order_by(WorkbuddyTask.finished_at.desc()).limit(1))).scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "no WorkBuddy report for this session yet")
+    await _store_report_docx(sid, t.id, t.result or {})
+    return {"ok": True}
+
+
+@router.post("/sessions/{sid}/actions/{aid}/retry")
+async def retry_action(sid: str, aid: str) -> dict[str, Any]:
+    """Re-run an action the founder already approved whose execution failed (e.g. Google not linked yet).
+    Rule 1 holds: only actions that were approved at G2 can be retried."""
+    from app.mcp import gws
+    async with SessionLocal() as db:
+        a = await db.get(ActionItem, aid)
+        if not a or a.session_id != sid:
+            raise HTTPException(404, "action not found")
+        if a.approval != "exec_failed" or a.decided_at is None:
+            raise HTTPException(409, f"only approved actions that failed can be retried (state: {a.approval})")
+        a.approval = "approved"
+        await db.commit()
+    res = await gws.execute(aid)
+    from app.events import emit
+    await emit(sid, "advisor", "tool_result", f"retry {aid[-6:]} → {res.get('status') or res.get('error')}", target="advisor", detail=res)
+    return res
+
+
 @router.get("/artifacts/{aid}")
 async def get_artifact(aid: str) -> Response:
     async with SessionLocal() as db:

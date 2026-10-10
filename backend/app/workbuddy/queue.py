@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from app.config import settings
 from app.db import SessionLocal
 from app.events import emit
-from app.models import WorkbuddyTask, WorkerHeartbeat
+from app.models import Artifact, WorkbuddyTask, WorkerHeartbeat
 from app.workbuddy.schemas import SKILL_SCHEMAS
 
 LEASE_S = 180
@@ -142,12 +142,37 @@ async def submit(task_id: str, result_json: str) -> dict[str, Any]:
             return {"ok": False, "validation_errors": errs[:10]}
         t.status, t.result, t.finished_at = "succeeded", parsed.model_dump(), now()
         await db.commit()
-        session_id, skill = t.session_id, t.skill
+        session_id, skill, result = t.session_id, t.skill, t.result
     await emit(session_id, "workbuddy", "done", f"WorkBuddy finished {skill}", target="workbuddy",
                detail={"task_id": task_id})
+    if skill == "report_builder":
+        await _store_report_docx(session_id, task_id, result)
     if task_id in _done:
         _done[task_id].set()
     return {"ok": True, "validation_errors": []}
+
+
+async def _store_report_docx(session_id: str, task_id: str, result: dict[str, Any]) -> None:
+    """Render WorkBuddy's report_markdown to DOCX and attach it to the session (never fails the submit)."""
+    import re
+
+    from app.workbuddy.docx_render import render
+    try:
+        title = result.get("title") or "StartupBuddy Report"
+        data = await asyncio.to_thread(render, result.get("report_markdown") or "", title)
+        fname = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-")[:80] + ".docx"
+        async with SessionLocal() as db:
+            a = Artifact(session_id=session_id, task_id=task_id, kind="report", filename=fname, url="",
+                         size_bytes=len(data), data=data,
+                         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            db.add(a)
+            await db.flush()
+            a.url = f"{settings.public_base_url.rstrip('/')}/artifacts/{a.id}"
+            await db.commit()
+        await emit(session_id, "workbuddy", "done", f"Report DOCX ready ({len(data) // 1024} KB)", target="workbuddy",
+                   detail={"artifact": fname})
+    except Exception as e:  # rendering is a convenience; the markdown report stays available
+        await emit(session_id, "workbuddy", "error", f"DOCX rendering failed: {type(e).__name__}", target="workbuddy")
 
 
 async def fail(task_id: str, reason: str) -> bool:
