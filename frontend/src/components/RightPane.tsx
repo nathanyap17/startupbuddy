@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Action, api, SessionDetail } from "../api";
+import { Action, api, BMC_LABEL, SessionDetail } from "../api";
 
 export const KIND: Record<string, [string, string]> = {
   email_outreach: ["✉️", "Email draft · I'll watch for the reply"], site_visit: ["📍", "In person · calendar, no video link"],
@@ -129,6 +129,7 @@ function GateG2({ d, onDone }: { d: SessionDetail; onDone: () => void }) {
               <span className="small muted">{(KIND[a.kind] ?? ["", a.kind])[1]}{when(a) ? ` · ${when(a)}` : ""} · from {a.source_agent.replace(/_/g, " ")}</span>
               <span className="small">{a.rationale}</span>
               {a.payload.follow_up_plan && <span className="small muted">Then: {a.payload.follow_up_plan}</span>}
+              {a.outdated && <span className="schip refine">Its source block changed; check it still fits</span>}
             </span>
           </label>
         ))}
@@ -147,6 +148,11 @@ function Scorecards({ d }: { d: SessionDetail }) {
   return (
     <section className="rp-sec">
       <div className="rp-h"><span>⚖️ Council verdict</span>{v && <span className={`schip ${VERDICT[v.overall][1]}`}>{VERDICT[v.overall][0]}</span>}</div>
+      {v && v.round > 0 && (
+        <div className="small muted">Round {v.round + 1} · {v.trigger?.replace(/_/g, " ")}
+          {v.previous && v.previous.overall !== v.overall && <> · was {v.previous.overall.toUpperCase()}</>}</div>
+      )}
+      {d.refining?.stage === "council" && <div className="small refining-line"><span className="spin" /> Re-assessing {BMC_LABEL[d.refining.key]}…</div>}
       <div className="score-grid">
         {SEATS.map((seat) => {
           const r = d.council.find((c) => c.seat === seat);
@@ -195,6 +201,7 @@ function Actions({ d, onChanged }: { d: SessionDetail; onChanged: () => void }) 
                   </>}
                 </span>
                 {a.follow_up_note && <span className="small">{a.follow_up_note}</span>}
+                {a.outdated && <span className="small"><span className="schip refine">Plan changed</span> {a.source_agent.replace(/_/g, " ")} was refined after this step was booked</span>}
                 {a.approval === "exec_failed" && <span className="small muted">{a.external_ref}</span>}
               </span>
             </div>
@@ -214,7 +221,7 @@ export default function RightPane({ d, onChanged }: { d: SessionDetail; onChange
     await api.settings(d.id, { [k]: v }).catch(() => undefined);
     onChanged();
   };
-  const docx = d.artifacts.find((x) => x.kind === "report");
+  const docx = d.artifacts.find((x) => x.kind === "report"); // newest first
   return (
     <div className="rp">
       <div className="panel-h"><span>Decisions</span></div>

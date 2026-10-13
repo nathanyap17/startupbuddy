@@ -74,7 +74,8 @@ export function deriveStates(d: SessionDetail, live: Record<string, NodeState>):
   s.problem = d.problem ? (d.phase === "gate_g1" ? "waiting" : "done") : ["intake", "problem"].includes(d.phase) ? "thinking" : "idle";
   for (const b of d.blocks) s[b.key] = b.status === "done" ? "done" : b.status === "failed" ? "failed" : b.status === "thinking" ? "thinking" : "idle";
   const reviewed = new Set(d.council.map((c) => c.seat));
-  for (const seat of SEATS) s[`council_${seat}`] = reviewed.has(seat) ? "done" : d.phase === "council" ? "thinking" : "idle";
+  const rescoring = d.refining?.stage === "council";
+  for (const seat of SEATS) s[`council_${seat}`] = rescoring || (!reviewed.has(seat) && d.phase === "council") ? "thinking" : reviewed.has(seat) ? "done" : "idle";
   s.advisor = d.phase === "gate_g2" ? "waiting" : d.actions.length ? "done" : d.phase === "advisor" ? "thinking" : "idle";
   const t = d.workbuddy_tasks;
   s.workbuddy = t.some((x) => x.status === "claimed") ? "thinking" : t.some((x) => x.status === "queued") ? "waiting" : t.length ? "done" : "idle";
@@ -90,7 +91,12 @@ function blockChips(d: SessionDetail, key: string): Chip[] {
   if (m != null && m >= 4) chips.push({ t: `Verified ${m}/5`, c: "verified" });
   else if (m != null) chips.push({ t: `${m}/5`, c: "info" });
   if (sourced) chips.push({ t: `Sourced ×${sourced}`, c: "sourced" });
+  const before = d.verdict?.previous?.block_means?.[key];
+  if (m != null && before != null && m !== before) chips.push({ t: `${m > before ? "▲" : "▼"} ${Math.abs(m - before).toFixed(1)}`, c: m > before ? "verified" : "refine" });
   if (d.verdict?.blocks_to_revise?.includes(key) || (m != null && m < 3.5)) chips.push({ t: "Refinement flag", c: "refine" });
+  const b = d.blocks.find((x) => x.key === key);
+  if ((b?.version ?? 1) > 1) chips.push({ t: `v${b!.version} · your input`, c: "info" });
+  if (b?.stale_reason) chips.push({ t: "Re-check", c: "refine" });
   return chips;
 }
 

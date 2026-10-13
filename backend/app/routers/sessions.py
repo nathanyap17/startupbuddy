@@ -38,6 +38,10 @@ class ChatIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class RefineIn(BaseModel):
+    instruction: str = Field(min_length=3, max_length=1000)
+
+
 class SettingsIn(BaseModel):
     auto_g1: bool | None = None
     auto_g2: bool | None = None
@@ -90,17 +94,31 @@ async def session_detail(sid: str) -> dict[str, Any]:
         blocks = (await db.execute(select(BmcBlock).where(BmcBlock.session_id == sid))).scalars().all()
         ev = (await db.execute(select(EvidenceItem).where(EvidenceItem.session_id == sid)
                                .order_by(EvidenceItem.created_at))).scalars().all()
-        reviews = (await db.execute(select(CouncilReview).where(CouncilReview.session_id == sid))).scalars().all()
-        verdict = (await db.execute(select(CouncilVerdict).where(CouncilVerdict.session_id == sid)
-                                    .order_by(CouncilVerdict.round.desc()).limit(1))).scalar_one_or_none()
+        reviews = (await db.execute(select(CouncilReview).where(CouncilReview.session_id == sid)
+                                    .order_by(CouncilReview.round))).scalars().all()
+        verdicts = (await db.execute(select(CouncilVerdict).where(CouncilVerdict.session_id == sid)
+                                     .order_by(CouncilVerdict.round.desc()).limit(2))).scalars().all()
         actions = (await db.execute(select(ActionItem).where(ActionItem.session_id == sid)
                                     .order_by(ActionItem.created_at))).scalars().all()
-        arts = (await db.execute(select(Artifact).where(Artifact.session_id == sid))).scalars().all()
+        arts = (await db.execute(select(Artifact).where(Artifact.session_id == sid)
+                                 .order_by(Artifact.created_at.desc()))).scalars().all()  # newest report first
         tasks = (await db.execute(select(WorkbuddyTask).where(WorkbuddyTask.session_id == sid)
                                   .order_by(WorkbuddyTask.created_at))).scalars().all()
+    from app.agent import refine
     latest: dict[str, Any] = {}
+    history: dict[str, list[dict[str, Any]]] = {}
     for b in sorted(blocks, key=lambda b: b.round):
-        latest[b.key] = {"key": b.key, "round": b.round, "status": b.status, "content": b.content}
+        latest[b.key] = {"key": b.key, "round": b.round, "version": b.round + 1, "status": b.status, "content": b.content,
+                         "instruction": b.instruction, "change_note": b.change_note, "stale_reason": b.stale_reason,
+                         "updated_at": _iso(b.updated_at)}
+        if b.status == "done":
+            history.setdefault(b.key, []).append({"version": b.round + 1, "instruction": b.instruction,
+                                                  "change_note": b.change_note, "updated_at": _iso(b.updated_at)})
+    for k, v in latest.items():
+        v["history"] = history.get(k, [])
+    seats = {r.seat: r for r in reviews}  # latest round per seat
+    verdict, prev_verdict = (list(verdicts) + [None, None])[:2]
+    changed_at = {k: v["updated_at"] for k, v in latest.items() if v["version"] > 1}
     return {
         **_summary(s),
         "lat": s.lat, "lng": s.lng,
@@ -109,13 +127,19 @@ async def session_detail(sid: str) -> dict[str, Any]:
         "blocks": [latest.get(k, {"key": k, "status": "pending", "content": {}}) for k in BMC_KEYS],
         "evidence": [{"scope": e.scope, "claim": e.claim, "value": e.value, "label": e.label,
                       "source_url": e.source_url, "method": e.method, "produced_by": e.produced_by} for e in ev],
-        "council": [{"seat": r.seat, "scores": r.scores, "strengths": r.strengths, "risks": r.risks,
-                     "must_verify": r.must_verify, "improve": r.improve, "verdict": r.verdict} for r in reviews],
+        "council": [{"seat": r.seat, "round": r.round, "scores": r.scores, "strengths": r.strengths, "risks": r.risks,
+                     "must_verify": r.must_verify, "improve": r.improve, "verdict": r.verdict} for r in seats.values()],
         "verdict": verdict and {"block_means": verdict.block_means, "blocks_to_revise": verdict.blocks_to_revise,
-                                "overall": verdict.overall},
+                                "overall": verdict.overall, "round": verdict.round, "trigger": verdict.trigger,
+                                "previous": prev_verdict and {"block_means": prev_verdict.block_means,
+                                                              "overall": prev_verdict.overall}},
+        "refining": refine.status(sid),
+        "refinable": s.phase in refine.PRE_G2 + refine.POST_G2,
         "actions": [{"id": a.id, "kind": a.kind, "title": a.title, "rationale": a.rationale, "payload": a.payload,
                      "source_agent": a.source_agent, "approval": a.approval, "external_ref": a.external_ref,
-                     "external_url": a.external_url, "follow_up": a.follow_up, "follow_up_note": a.follow_up_note}
+                     "external_url": a.external_url, "follow_up": a.follow_up, "follow_up_note": a.follow_up_note,
+                     # the block this action came from was refined after the action was proposed
+                     "outdated": bool(changed_at.get(a.source_agent) and changed_at[a.source_agent] > _iso(a.created_at))}
                     for a in actions],
         "artifacts": [{"id": a.id, "kind": a.kind, "filename": a.filename, "url": a.url, "size_bytes": a.size_bytes}
                       for a in arts],
@@ -148,6 +172,9 @@ async def decide_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]
             raise HTTPException(404, "session not found")
         if s.phase != expected:
             raise HTTPException(409, f"session is in phase {s.phase}, not {expected}")
+        from app.agent import refine
+        if expected == "gate_g2" and refine.status(sid):
+            raise HTTPException(409, "a block refinement is still running; approve the actions once it finishes")
         now = datetime.now(timezone.utc)
         if expected == "gate_g0":
             answer = (body.notes or body.statement or "").strip()
@@ -204,11 +231,38 @@ async def post_gate(sid: str, gate: str, body: GateDecision) -> dict[str, Any]:
 
 @router.post("/sessions/{sid}/chat")
 async def post_chat(sid: str, body: ChatIn) -> dict[str, Any]:
+    from app.agent import refine
     from app.agent.assistant import ask
     async with SessionLocal() as db:
         if not await db.get(StartupSession, sid):
             raise HTTPException(404, "session not found")
+    mention = refine.parse_mention(body.message)
+    if mention:  # "@Block preference" is a refinement request, not a question
+        return await refine_or_explain(sid, mention[0], mention[1], "web")
     return await ask(sid, body.message, "web")
+
+
+async def refine_or_explain(sid: str, key: str, instruction: str, channel: str) -> dict[str, Any]:
+    """Start a refinement; if it can't start, say why in the chat (and return it) instead of failing silently."""
+    from app.agent import refine
+    from app.events import emit
+    try:
+        out = await refine.request(sid, key, instruction, channel)
+        return {"reply": f"On it: refining {refine.NAME[key]}. {out['message']}.", **out}
+    except refine.RefineError as e:
+        await emit(sid, "session_assistant", "chat", f"🙏 {e.message}", detail={"role": "assistant", "channel": channel})
+        return {"ok": False, "reply": e.message, "status": e.status}
+
+
+@router.post("/sessions/{sid}/blocks/{key}/refine")
+async def post_refine(sid: str, key: str, body: RefineIn) -> dict[str, Any]:
+    """Founder's preference for one BMC block: the block agent rewrites it, then the council re-assesses.
+    Before G2 only that block is re-scored; after G2 the full council reviews again."""
+    from app.agent import refine
+    try:
+        return await refine.request(sid, key, body.instruction, "web")
+    except refine.RefineError as e:
+        raise HTTPException(e.status, e.message)
 
 
 @router.post("/sessions/{sid}/settings")
@@ -279,9 +333,20 @@ async def build_report_markdown(sid: str) -> str:
         if c.get("assumptions"):
             L += ["", "*Assumptions to test:* " + "; ".join(c["assumptions"])]
         L.append("")
+    refined = [b for b in d["blocks"] if (b.get("version") or 1) > 1]
+    if refined:
+        L += ["### Founder refinements", ""]
+        L += [f"- **{b['key'].replace('_', ' ').title()} v{h['version']}**: \u201c{h['instruction']}\u201d: {h['change_note']}"
+              for b in refined for h in b.get("history", []) if h.get("instruction")]
+        L.append("")
+    stale = [b for b in d["blocks"] if b.get("stale_reason")]
+    if stale:
+        L += ["*Blocks to re-check after a change:* " + "; ".join(
+            f"{b['key'].replace('_', ' ').title()} ({b['stale_reason']})" for b in stale), ""]
     if d["verdict"]:
         v = d["verdict"]
-        L += ["## 3. Council review", f"**Overall verdict:** {v['overall'].upper()}  ",
+        L += ["## 3. Council review", f"**Overall verdict:** {v['overall'].upper()} (review round {v['round'] + 1}"
+              + (f", after: {v['trigger']}" if v.get("trigger") and v["round"] else "") + ")  ",
               f"**Blocks to revise:** {', '.join(v['blocks_to_revise']) or 'none'}", ""]
         for r in d["council"]:
             L += [f"### {r['seat'].upper()}: {r['verdict']}"]

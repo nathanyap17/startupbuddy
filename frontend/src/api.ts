@@ -13,16 +13,21 @@ export interface Screen { verdict: "allowed" | "regulated" | "ambiguous" | "proh
   clarifying_question: string; refusal_reason: string; legal_alternatives: string[]; online_competitor_hints: string[]; }
 export interface PilotSummary { one_liner: string; verdict: "go" | "revise" | "stop"; highlights: string[]; first_step: string; }
 export interface Evidence { scope: string; claim: string; value: string | null; label: "sourced" | "estimated" | "needs_verification"; source_url: string | null; method: string | null; produced_by: string; }
-export interface Block { key: string; status: string; round?: number; content: { summary?: string; items?: string[]; assumptions?: string[] }; }
-export interface Review { seat: string; scores: Record<string, number>; strengths: string[]; risks: string[]; must_verify: string[]; improve: string[]; verdict: string; }
-export interface Action { id: string; kind: "email_outreach" | "site_visit" | "online_meeting" | "task" | "calendar_event" | "gmail_draft"; follow_up: string | null; follow_up_note: string | null; title: string; rationale: string; payload: Record<string, any>; source_agent: string; approval: string; external_ref: string | null; external_url: string | null; }
+export interface BlockVersion { version: number; instruction: string | null; change_note: string | null; updated_at: string | null; }
+export interface Block { key: string; status: string; round?: number; version?: number; content: { summary?: string; items?: string[]; assumptions?: string[] };
+  instruction?: string | null; change_note?: string | null; stale_reason?: string | null; history?: BlockVersion[]; }
+export interface Refining { key: string; mode: "rescore" | "retriage"; stage: "rewrite" | "council" | "sync"; }
+export interface Review { round?: number; seat: string; scores: Record<string, number>; strengths: string[]; risks: string[]; must_verify: string[]; improve: string[]; verdict: string; }
+export interface Action { id: string; kind: "email_outreach" | "site_visit" | "online_meeting" | "task" | "calendar_event" | "gmail_draft"; follow_up: string | null; follow_up_note: string | null; title: string; rationale: string; payload: Record<string, any>; source_agent: string; approval: string; external_ref: string | null; external_url: string | null; outdated?: boolean; }
 export interface Competitor { name: string; rating: number | null; reviews: number | null; distance_km: number; maps_url: string | null; }
 export interface SessionDetail extends SessionSummary {
   lat: number | null; lng: number | null;
   problem: null | { statement: string; target_user: string; pain: string; why_now: string; confirmed_at: string | null;
     details: { demand_signals?: string[]; competition_summary?: string; differentiation_hypothesis?: string; competitors?: Competitor[] } };
   blocks: Block[]; evidence: Evidence[]; council: Review[];
-  verdict: null | { block_means: Record<string, number | null>; blocks_to_revise: string[]; overall: string };
+  verdict: null | { block_means: Record<string, number | null>; blocks_to_revise: string[]; overall: string; round: number; trigger: string | null;
+    previous: null | { block_means: Record<string, number | null>; overall: string } };
+  refining: Refining | null; refinable: boolean;
   actions: Action[]; artifacts: { id: string; kind: string; filename: string; url: string }[];
   workbuddy_tasks: { id: string; skill: string; status: string; result: any }[];
   workbuddy_online: boolean;
@@ -40,6 +45,8 @@ export const api = {
   list: () => j<SessionSummary[]>("/sessions"),
   create: (intent: string, location_text: string, auto_g1 = false, auto_g2 = false) =>
     j<SessionSummary>("/sessions", { method: "POST", body: JSON.stringify({ intent, location_text, auto_g1, auto_g2 }) }),
+  refine: (id: string, key: string, instruction: string) =>
+    j<{ ok: boolean; mode: string; message: string }>(`/sessions/${id}/blocks/${key}/refine`, { method: "POST", body: JSON.stringify({ instruction }) }),
   chat: (id: string, message: string) => j<{ reply: string }>(`/sessions/${id}/chat`, { method: "POST", body: JSON.stringify({ message }) }),
   settings: (id: string, body: { auto_g1?: boolean; auto_g2?: boolean }) =>
     j<{ auto_g1: boolean; auto_g2: boolean }>(`/sessions/${id}/settings`, { method: "POST", body: JSON.stringify(body) }),

@@ -32,6 +32,10 @@ class BlockOut(BaseModel):
     evidence: list[EvidenceOut] = Field(default_factory=list)
 
 
+class RefinedBlockOut(BlockOut):
+    change_note: str = Field(description="One sentence for the founder: what you changed and why (or why you could not apply their wish)")
+
+
 class BlockScore(BaseModel):
     block: Literal["customer_segments", "value_propositions", "channels", "customer_relationships",
                    "key_activities", "key_resources", "key_partners", "revenue_streams", "cost_structure"]
@@ -45,6 +49,12 @@ class ReviewOut(BaseModel):
     must_verify: list[str] = Field(default_factory=list, description="Claims the founder must verify in the real world")
     improve: list[str] = Field(default_factory=list, description="Concrete improvements")
     verdict: Literal["go", "revise", "stop"]
+
+
+class BlockRescoreOut(BaseModel):
+    score: int = Field(ge=1, le=5, description="Your new score for the refined block only, 1 = weak, 5 = strong")
+    reason: str = Field(description="One sentence: why this score, compared with the previous version")
+    verdict: Literal["go", "revise", "stop"] = Field(description="Your overall verdict on the whole canvas now")
 
 
 class ActionOut(BaseModel):

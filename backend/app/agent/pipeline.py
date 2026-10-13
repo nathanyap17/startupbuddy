@@ -381,17 +381,32 @@ async def _phase_bmc(sid: str) -> None:
 
 
 # ---------------------------------------------------------------- Phase 3
-async def _phase_council(sid: str) -> dict[str, Any]:
-    await _set_phase(sid, "council")
+def review_from_row(r: CouncilReview) -> ReviewOut:
+    return ReviewOut(scores=[{"block": k, "score": v} for k, v in r.scores.items()], strengths=r.strengths, risks=r.risks,
+                     must_verify=r.must_verify, improve=r.improve, verdict=r.verdict)
+
+
+async def _phase_council(sid: str, rnd: int = 0, trigger: str = "initial review", set_phase: bool = True) -> dict[str, Any]:
+    """Full 5-seat review of the canvas. Round 0 in the pipeline; later rounds re-triage after a founder refinement."""
+    if set_phase:
+        await _set_phase(sid, "council")
     ctx = json.dumps(await _context(sid), ensure_ascii=False, default=str)
 
     async def seat(name: str) -> ReviewOut | None:
         try:
             r = await run_agent(factories.council_agent(sid, name), ctx, ReviewOut, sid, f"council_{name}")
         except Exception:
-            return None
+            if rnd == 0:
+                return None
+            async with SessionLocal() as db:  # re-triage: a seat that fails keeps its previous review (labelled)
+                prev = (await db.execute(select(CouncilReview).where(CouncilReview.session_id == sid, CouncilReview.seat == name)
+                                         .order_by(CouncilReview.round.desc()).limit(1))).scalar_one_or_none()
+            if not prev:
+                return None
+            await emit(sid, f"council_{name}", "fallback", "⏳ I kept my previous review this round", target=f"council_{name}")
+            r = review_from_row(prev)
         async with SessionLocal() as db:
-            db.add(CouncilReview(session_id=sid, seat=name, round=0,
+            db.add(CouncilReview(session_id=sid, seat=name, round=rnd,
                                  scores={x.block: x.score for x in r.scores}, strengths=r.strengths,
                                  risks=r.risks, must_verify=r.must_verify, improve=r.improve, verdict=r.verdict))
             await db.commit()
@@ -400,7 +415,7 @@ async def _phase_council(sid: str) -> dict[str, Any]:
     reviews = [r for r in await asyncio.gather(*(seat(n) for n in SEATS)) if r]
     agg = factories.aggregate(reviews)
     async with SessionLocal() as db:
-        db.add(CouncilVerdict(session_id=sid, round=0, **agg))
+        db.add(CouncilVerdict(session_id=sid, round=rnd, trigger=trigger, **agg))
         await db.commit()
     await emit(sid, "council", "done",
                f"{VERDICT_SAY[agg['overall']]}" + (f" · needs work: {', '.join(b.replace('_', ' ') for b in agg['blocks_to_revise'])}" if agg['blocks_to_revise'] else ""),
@@ -413,7 +428,9 @@ async def _phase_advisor(sid: str, agg: dict[str, Any]) -> None:
     await _set_phase(sid, "advisor")
     ctx = await _context(sid)
     async with SessionLocal() as db:
-        reviews = (await db.execute(select(CouncilReview).where(CouncilReview.session_id == sid))).scalars().all()
+        reviews = (await db.execute(select(CouncilReview).where(CouncilReview.session_id == sid)
+                                    .order_by(CouncilReview.round))).scalars().all()
+    reviews = list({r.seat: r for r in reviews}.values())  # latest round per seat
     ctx["council"] = {"aggregate": agg, "reviews": [{"seat": r.seat, "verdict": r.verdict, "risks": r.risks,
                                                      "must_verify": r.must_verify, "improve": r.improve} for r in reviews]}
     today = datetime.now(ZoneInfo(settings.timezone))

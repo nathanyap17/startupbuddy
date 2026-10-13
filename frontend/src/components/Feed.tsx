@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
-import { AgentEvent, api } from "../api";
+import { AgentEvent, api, BMC_LABEL, SessionDetail } from "../api";
 
 marked.use({ renderer: { html: () => "" } });
 
@@ -68,25 +68,77 @@ function Thinking({ item, live }: { item: Extract<Item, { type: "think" }>; live
 
 const SUGGESTIONS = ["Honestly, is this idea worth it? 🤔", "What should I verify first?", "How can I beat the nearest competitor?", "Explain my costs simply 💰"];
 
-export default function Feed({ sessionId, events, running }: { sessionId: string; events: AgentEvent[]; running: boolean }) {
+const errText = (e: unknown) => {
+  const m = String(e).match(/\{.*\}/s);
+  try { return m ? JSON.parse(m[0]).detail ?? String(e) : String(e); } catch { return String(e); }
+};
+/** Blocks the council flagged (or scored under 3.5): suggested first for refinement. */
+export const needsWork = (d: SessionDetail, key: string) => {
+  const m = d.verdict?.block_means?.[key];
+  return !!d.verdict?.blocks_to_revise?.includes(key) || (m != null && m < 3.5);
+};
+
+export default function Feed({ d, events, running, mention, onMention }: {
+  d: SessionDetail; events: AgentEvent[]; running: boolean; mention: string; onMention: (key: string) => void;
+}) {
+  const sessionId = d.id;
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [pick, setPick] = useState<{ q: string; i: number } | null>(null);
   const [filter, setFilter] = useState<"all" | "chat">("all");
   const end = useRef<HTMLDivElement>(null);
+  const ta = useRef<HTMLTextAreaElement>(null);
   const items = useMemo(() => group(events), [events]);
   const shown = filter === "chat" ? items.filter((i) => i.type === "chat") : items;
   const lastThinkKey = [...items].reverse().find((i) => i.type === "think")?.key;
+  const options = pick ? Object.keys(BMC_LABEL).filter((k) => {
+    const q = pick.q.replace(/[\s_]/g, "");
+    return !q || BMC_LABEL[k].toLowerCase().replace(/\s/g, "").includes(q) || k.replace(/_/g, "").includes(q);
+  }) : [];
+  const flagged = d.refinable ? Object.keys(BMC_LABEL).filter((k) => needsWork(d, k)) : [];
 
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [events.length, busy]);
+  useEffect(() => { if (mention) { setNote(""); ta.current?.focus(); } }, [mention]);
 
   async function send(text: string) {
     const t = text.trim();
     if (!t || busy) return;
-    setBusy(true); setMsg("");
-    try { await api.chat(sessionId, t); } catch { /* reply arrives via the event stream; errors shown there */ }
+    setBusy(true); setNote("");
+    try {
+      if (mention) { await api.refine(sessionId, mention, t); onMention(""); }
+      else await api.chat(sessionId, t);
+      setMsg("");
+    } catch (e) { setNote(errText(e)); }
     setBusy(false);
   }
   const submit = (e: FormEvent) => { e.preventDefault(); send(msg); };
+  const choose = (key: string) => {
+    const el = ta.current;
+    const caret = el?.selectionStart ?? msg.length;
+    const before = msg.slice(0, caret).replace(/@[\w ]{0,24}$/, "");
+    setMsg((before + msg.slice(caret)).trimStart());
+    setPick(null); onMention(key);
+  };
+  const onType = (v: string, caret: number) => {
+    setMsg(v);
+    const m = v.slice(0, caret).match(/(?:^|\s)@([\w ]{0,24})$/);
+    setPick(m && d.refinable ? { q: m[1].toLowerCase(), i: 0 } : null);
+  };
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (pick && options.length) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setPick({ ...pick, i: (pick.i + step + options.length) % options.length }); return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); choose(options[pick.i]); return; }
+      if (e.key === "Escape") { setPick(null); return; }
+    }
+    if (e.key === "Backspace" && mention && !msg) { onMention(""); return; }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(msg); }
+  };
+  const refining = d.refining;
 
   return (
     <div className="fd">
@@ -110,6 +162,7 @@ export default function Feed({ sessionId, events, running }: { sessionId: string
                 <div className="fd-bubble">
                   {user ? it.ev.summary : <div dangerouslySetInnerHTML={{ __html: marked.parse(it.ev.summary) as string }} />}
                   {it.ev.detail?.channel === "workbuddy" && <span className="chip">via WorkBuddy</span>}
+                  {it.ev.detail?.refine && <span className="chip">✏️ refinement</span>}
                 </div>
               </div>
             );
@@ -132,13 +185,55 @@ export default function Feed({ sessionId, events, running }: { sessionId: string
         {busy && <div className="fd-chat bot"><div className="fd-avatar">💬</div><div className="fd-bubble typing"><span /><span /><span /></div></div>}
         <div ref={end} />
       </div>
+      {refining && (
+        <div className="fd-refining">
+          <span className="spin" /> {refining.stage === "rewrite" ? `✍️ Rewriting ${BMC_LABEL[refining.key]}…`
+            : refining.stage === "council" ? (refining.mode === "rescore" ? `⚖️ Council re-scoring ${BMC_LABEL[refining.key]}…` : "⚖️ Full council review (round after Checkpoint 2)…")
+            : "🔄 Syncing report and summary…"}
+        </div>
+      )}
       <div className="fd-suggest">
+        {!mention && flagged.map((k) => (
+          <button key={k} className="chip-btn refine" disabled={busy || !!refining} onClick={() => onMention(k)} title="The council flagged this block">✏️ Refine {BMC_LABEL[k]}</button>
+        ))}
         {SUGGESTIONS.map((s) => <button key={s} className="chip-btn" disabled={busy} onClick={() => send(s)}>{s}</button>)}
       </div>
       <form className="fd-compose" onSubmit={submit}>
-        <textarea rows={2} value={msg} placeholder="Ask about your plan…" onChange={(e) => setMsg(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(msg); } }} />
-        <button className="primary" disabled={busy || !msg.trim()}>Send</button>
+        {pick && options.length > 0 && (
+          <div className="mention-pop" role="listbox" aria-label="Choose a canvas block">
+            <div className="mention-h">Refine a canvas block</div>
+            {options.map((k, i) => {
+              const b = d.blocks.find((x) => x.key === k);
+              const m = d.verdict?.block_means?.[k];
+              return (
+                <button type="button" key={k} role="option" aria-selected={i === pick.i} className={i === pick.i ? "on" : ""}
+                  onMouseDown={(e) => { e.preventDefault(); choose(k); }}>
+                  <span>{agentTag(k)[0]} {BMC_LABEL[k]}</span>
+                  <span className="mention-meta">
+                    {(b?.version ?? 1) > 1 && <span className="schip info">v{b?.version}</span>}
+                    {m != null && <span className={`schip ${m >= 4 ? "verified" : "info"}`}>{m}/5</span>}
+                    {needsWork(d, k) && <span className="schip refine">needs work</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div className="fd-input">
+          {mention && (
+            <div className="mention-chip">
+              <span>@{BMC_LABEL[mention]}</span>
+              <span className="muted">{d.phase === "gate_g2" || d.phase === "advisor" || d.phase === "deliverables" ? "council re-scores this block" : "full council re-review"}</span>
+              <button type="button" className="ghost" aria-label="Remove block" onClick={() => onMention("")}>✕</button>
+            </div>
+          )}
+          <textarea ref={ta} rows={2} value={msg}
+            placeholder={mention ? `How should ${BMC_LABEL[mention]} change? e.g. focus on students, cheaper set meals…`
+              : d.refinable ? "Ask about your plan, or type @ to refine a block…" : "Ask about your plan…"}
+            onChange={(e) => onType(e.target.value, e.target.selectionStart)} onKeyDown={onKey} onBlur={() => setTimeout(() => setPick(null), 120)} />
+          {note && <div className="fd-note">🙏 {note}</div>}
+        </div>
+        <button className="primary" disabled={busy || !msg.trim() || (!!mention && !!refining)}>{mention ? "Refine" : "Send"}</button>
       </form>
     </div>
   );

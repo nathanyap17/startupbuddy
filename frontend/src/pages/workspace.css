@@ -182,3 +182,27 @@
 .toggle input:checked + .track { background: var(--brand); border-color: var(--brand); }
 .toggle input:checked + .track .thumb { transform: translateX(14px); }
 .toggle input:focus-visible + .track { outline: 2px solid var(--brand-2); outline-offset: 2px; }
+
+/* ---------- block refinement (@-mention) ---------- */
+.fd-compose { position: relative; }
+.fd-input { flex: 1; display: grid; gap: 6px; min-width: 0; }
+.mention-chip { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 4px 4px 10px; border-radius: 999px; background: #EDF4FF; border: 1px solid #cfe0f5; color: var(--brand); width: fit-content; max-width: 100%; }
+.mention-chip > span:first-child { font-weight: 700; }
+.mention-chip .muted { font-size: 11px; }
+.mention-chip button { padding: 0 6px; min-height: 0; line-height: 1.4; font-size: 11px; }
+.mention-pop { position: absolute; left: 12px; right: 12px; bottom: calc(100% - 4px); background: #fff; border: 1px solid var(--border); border-radius: .75rem; box-shadow: 0 14px 40px rgba(16, 29, 41, .16); padding: 6px; display: grid; gap: 2px; z-index: 8; max-height: 300px; overflow: auto; }
+.mention-h { font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 8px; text-transform: uppercase; letter-spacing: .04em; }
+.mention-pop button { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: .5rem; font-size: 13px; color: var(--ink, #101D29); }
+.mention-pop button.on, .mention-pop button:hover { background: var(--surface-2); }
+.mention-meta { display: flex; gap: 4px; flex: none; }
+.fd-note { font-size: 12px; color: #8a4b12; background: #fff6ea; border: 1px solid #f3dcc0; border-radius: .5rem; padding: 6px 8px; }
+.fd-refining, .refining-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--brand-2); }
+.fd-refining { padding: 6px 12px; border-top: 1px solid var(--border); background: #F7F9FC; }
+.spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #cfe0f5; border-top-color: var(--brand-2); animation: spin 0.8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.chip-btn.refine { color: #8a4b12; background: #fff6ea; border-color: #f3dcc0; }
+.refine-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.refine-bar button { margin-left: auto; }
+.stale-note { font-size: 12px; padding: 8px; border-radius: .5rem; background: #fff6ea; border: 1px solid #f3dcc0; }
+.drawer-b ol.history { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

@@ -141,3 +141,51 @@
 - Reply parser: in-person reply → no Meet + location; "Google Meet call" → online; "see our website" → no event, next step only.
 ### Still open
 - Reply watching live needs the owner to re-link Google with gmail.readonly and update the `gws-token` secret.
+
+
+## [2026-10-13] Founder-in-the-loop block refinement (@-mention + council re-assessment)
+### Why (owner request)
+- The founder should be able to select a canvas block, type `@Block` in the Studio box with their preference, and have the agent refine it, re-score it and keep everything in sync: re-score only before G2, a full council round again after G2.
+### What changed
+- `app/agent/refine.py`:
+  - `request()` validates and starts the work in the background; `_refine()` runs rewrite → re-assess → sync.
+  - The block's own agent gets `REFINE` + `RefinedBlockOut` (with `change_note`); each version is a new `bmc_block` row (v1, v2, …).
+  - Before G2: the 5 seats re-score only that block (`RESCORE` + `BlockRescoreOut`), then a new council round and verdict computed by `aggregate()`.
+  - After G2: `_phase_council(rnd, trigger, set_phase=False)` runs a full round; a seat that fails keeps its previous review. Then the pilot summary is regenerated.
+- Sync:
+  - dependent blocks get `stale_reason` ("Re-check");
+  - actions from the refined block are flagged `outdated`;
+  - the report is updated: a still-queued `report_builder` task is rewritten, otherwise a new one is queued; when WorkBuddy is offline the backend renders the DOCX itself;
+  - the feed shows the score change (`4.2 → 2.2 (-2.0) · verdict stays REVISE`) and the chat gets a reply.
+- Bounds:
+  - one refinement per session at a time;
+  - at most 6 versions per block;
+  - G2 can't be approved while a refinement is running;
+  - illegal wishes are refused by the `ILLEGAL` backstop.
+- API, MCP and schema:
+  - `POST /sessions/{id}/blocks/{key}/refine`; chat and MCP `ask_session` route messages starting with `@Block`;
+  - new MCP tool `refine_block`; `get_session_status` now returns `refining`, `council_verdict` and `block_scores`;
+  - `session_detail` adds block version, history, change_note and stale_reason, the latest council round per seat, verdict round, trigger and previous means, `refining`, `refinable`, `actions[].outdated`; newest DOCX first;
+  - migrations: `bmc_block.instruction`, `change_note` and `stale_reason`; `council_verdict.trigger`.
+- Frontend:
+  - `@` autocomplete in the Studio composer (score, version and "needs work" per block) and a block chip;
+  - "✏️ Refine <block>" suggestions for flagged blocks; "Refine with my input" in the block inspector, with score, change and version history;
+  - canvas chips (▲/▼ delta, `vN · your input`, Re-check); council seats animate while re-scoring;
+  - scorecards show the round and trigger; actions show "Plan changed".
+- Docs and skill: MCP_CONTRACT, AGENTS, README; worker skill v0.5.0 (`refine_block`).
+### Verified (local, 2026-10-11/12)
+- Guardrails:
+  - "sell ganja noodles" → 422 citing the Dangerous Drugs Act 1952;
+  - a second refinement while one is running → "One change at a time".
+- Pre-G2 (session at gate_g2):
+  - Revenue Streams + "RM7 student set meal and weekday breakfast combo" → v2 with change_note;
+  - the 5 seats re-scored it 4.2 → 2.2 because a breakfast shift conflicts with the late-night positioning (an honest drop, not a rubber stamp);
+  - verdict round 1, Cost Structure flagged Re-check, the action from Cost Structure flagged, DOCX re-rendered (WorkBuddy offline locally).
+- Post-G2 (session done):
+  - "@Key Partners add TEKUN Nasional and a local noodle supplier" → full council round 1, Key Partners 3.0 → 3.2;
+  - the Mentor timed out and kept its previous review (labelled in the feed);
+  - pilot summary regenerated, DOCX re-rendered.
+- Frontend: `tsc` and `vite build` clean. A visual check in the browser is still pending: Docker needed a reset.
+### Still open
+- Dependent blocks are flagged, not rewritten automatically (by design, to keep cost down); the founder refines them with one tap.
+- Not deployed yet: backend and frontend both need a redeploy (`infra/deploy-backend.ps1`, `infra/deploy-frontend.ps1`), and WorkBuddy needs worker skill v0.5.0.

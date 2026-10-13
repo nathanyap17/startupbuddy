@@ -114,7 +114,8 @@ WorkBuddy connects to StartupBuddy as a **custom MCP connector**. Because MCP le
 - **starts the run** from one prompt (`start_session`);
 - **researches the market** on the web (`desk_research`: findings with sources and labels);
 - **writes the full report** (`report_builder`; the backend turns it into a DOCX);
-- **relays the founder's decisions** (`confirm_gate` for G0/G1/G2) and answers questions (`ask_session`, `check_followups`).
+- **relays the founder's decisions** (`confirm_gate` for G0/G1/G2) and answers questions (`ask_session`, `check_followups`);
+- **passes on the founder's preferences** for a block (`refine_block`), which the block's agent applies before the council re-assesses it.
 
 ---
 

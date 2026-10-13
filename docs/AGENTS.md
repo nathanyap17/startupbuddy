@@ -74,4 +74,25 @@ Definitions: `workbuddy/skills/`. Contract: `docs/MCP_CONTRACT.md`.
 | `session_assistant` | founder asks in chat / WorkBuddy `ask_session` | text | Grounded in the session |
 | `pilot_summary` | end of run | one-liner + highlights | |
 
+## Founder-in-the-loop refinement (2026-10-11)
+
+The founder selects a block (type `@` in the Studio box, or **Refine with my input** in the block inspector; WorkBuddy: `refine_block`) and gives a preference.
+
+1. **Rewrite.** That block's own agent receives the founder's wish, its current version and every seat's score and feedback for the block, and returns a new version (`RefinedBlockOut`, with a one-line `change_note`). It keeps the screening, the law and the evidence rules: a wish that conflicts with them is not applied, and the agent says why. Each version is a new `bmc_block` row (v1, v2, …); nothing is overwritten.
+2. **Re-assess.**
+   - **Before G2:** the 5 seats re-score **only that block** in parallel (`BlockRescoreOut`: score, reason, overall verdict). Code writes a new council round and recomputes the means and the verdict with the same `aggregate()`.
+   - **After G2:** a **full council round** runs again (all 9 blocks, all 5 seats). A seat that fails keeps its previous review, labelled in the feed.
+3. **Sync.**
+   - Blocks that depend on the changed one are flagged *Re-check* (`stale_reason`); they are not rewritten automatically.
+   - Actions that came from the changed block are flagged *Plan changed*; they are never changed automatically (rule 1).
+   - The report is updated: a WorkBuddy report task that hasn't started yet is rewritten, otherwise a new one is queued. If WorkBuddy is offline, the backend renders its own DOCX.
+   - After G2 the pilot summary is also regenerated.
+   - The feed shows the score change (e.g. `Revenue Streams 2.6 → 3.8 (+1.2) · verdict REVISE → GO`).
+
+Bounds (rule 5):
+- one refinement at a time per session;
+- at most 6 versions per block;
+- G2 can't be approved while a refinement is running;
+- illegal wishes are refused by the same `ILLEGAL` backstop the intake screener uses.
+
 Advisor action kinds: `email_outreach` (draft → wait for reply → schedule), `site_visit` (calendar, no video link → waiting for founder's update), `online_meeting` (calendar + Meet, only when naturally online), `task` (checklist).

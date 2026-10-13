@@ -42,6 +42,13 @@ You are the BMC agent for ONE block of the Business Model Canvas: {block_desc}
 Use the confirmed problem statement, the location evidence and the blocks already written by other agents.
 Stay consistent with them; if you disagree, say so in `assumptions`. 3-6 items."""
 
+REFINE = """
+FOUNDER REFINEMENT: the founder asked you to refine YOUR block. You get `founder_refinement` with their wish
+(`instruction`), the `current_version` of your block and the council's feedback. Apply the founder's preference
+unless it conflicts with the screening, Malaysian law or the evidence; if it does, keep the safe version and say
+why in `change_note`. Keep what still works, fix what the council criticised, and stay consistent with the other
+blocks (note any knock-on effect in `assumptions`). New figures need evidence labels like before."""
+
 COUNCIL: dict[str, str] = {
     "customer": "the target CUSTOMER living or working near the location. Ask: would I buy this, at this price, here, instead of what I buy now?",
     "ceo": "an experienced CEO. Judge strategy, focus, execution risk and what to do first.",
@@ -55,6 +62,12 @@ You sit on the StartupBuddy review council as {seat_desc}
 Review the full Business Model Canvas critically. Score all 9 blocks from 1 (weak) to 5 (strong).
 List strengths, risks, claims that must be verified in the real world, and concrete improvements.
 Verdict: go (ready to test), revise (fix weak blocks first) or stop (fundamentally flawed)."""
+
+RESCORE = """
+RE-ASSESSMENT: the founder refined ONE block (`block_under_review`) after your review. Compare its
+`previous_version` with its `new_version`, in the context of the whole canvas. Score ONLY that block (1-5) honestly:
+a founder preference does not earn points by itself; better evidence, clearer customers or sounder numbers do.
+Give a one-sentence reason and your overall verdict on the canvas now."""
 
 ADVISOR = COMMON + """
 You are the Advisor. Based on the screening, problem statement, canvas and council verdict, propose 3-5 concrete

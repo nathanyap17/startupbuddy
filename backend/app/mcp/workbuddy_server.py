@@ -50,7 +50,11 @@ async def get_session_status(session_id: str) -> dict:
     from app.routers.sessions import session_detail
     d = await session_detail(session_id)
     gate = {"gate_g0": "G0", "gate_g1": "G1", "gate_g2": "G2"}.get(d["phase"])
-    out = {"phase": d["phase"], "gate_waiting": gate, "app_url": _app_url(session_id), "error": d["error"]}
+    out = {"phase": d["phase"], "gate_waiting": gate, "app_url": _app_url(session_id), "error": d["error"],
+           "refining": d["refining"]}
+    if d["verdict"]:
+        out["council_verdict"] = d["verdict"]["overall"]
+        out["block_scores"] = d["verdict"]["block_means"]
     if gate == "G0" and d.get("screen"):
         out["clarifying_question"] = d["screen"].get("clarifying_question")
     if gate == "G1" and d["problem"]:
@@ -97,11 +101,37 @@ async def ask_session(session_id: str, question: str) -> dict:
     """Ask StartupBuddy a question about a session's plan (problem, canvas, council, evidence, actions).
     Answers are friendly and grounded in that session's data. Takes up to ~20 s."""
     import asyncio
+    from app.agent import refine
     from app.agent.assistant import ask
+    from app.routers.sessions import refine_or_explain
+    mention = refine.parse_mention(question)
+    if mention:  # "@Block preference" → refinement
+        return await refine_or_explain(session_id, mention[0], mention[1], "workbuddy")
     try:
         return await asyncio.wait_for(ask(session_id, question, "workbuddy"), timeout=24)
     except TimeoutError:
         return {"reply": "Still thinking about that one. Please check the web app chat in a moment."}
+
+
+@server.tool()
+async def refine_block(session_id: str, block: str, instruction: str) -> dict:
+    """Refine ONE Business Model Canvas block with the user's own preference, then have the council re-assess it.
+    Only call with the user's words. Before Checkpoint 2 the council re-scores that block; after it, the full
+    council reviews again and the report is refreshed. Runs in the background (~1-2 min); progress and the new
+    score appear in the app feed and in get_session_status.
+
+    Args:
+        session_id: The session.
+        block: customer_segments, value_propositions, channels, customer_relationships, key_activities,
+            key_resources, key_partners, revenue_streams or cost_structure.
+        instruction: The user's preference, e.g. "target university students, keep prices under RM8".
+    """
+    from app.agent import refine
+    key = (refine.parse_mention("@" + block.strip().lstrip("@")) or (block.strip(), ""))[0]
+    try:
+        return await refine.request(session_id, key, instruction, "workbuddy")
+    except refine.RefineError as e:
+        return {"ok": False, "error": e.message}
 
 
 @server.tool()

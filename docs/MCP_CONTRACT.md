@@ -27,7 +27,8 @@ lease expires → re-queued (attempts+1, max 2) · deadline passes → status=ex
 | `fail_task` | `task_id`, `reason` | `{ok}` | Agent falls back immediately |
 | `upload_artifact` | `task_id`, `filename`, `content_base64` | `{url}` | Files (DOCX/XLSX/PPTX) stored in GCS bucket; size cap 10 MB |
 | `check_followups` | `session_id` | `{results[]}` | Checks replies to sent outreach emails; replies with a time are added to the founder's calendar (no invites) |
-| `ask_session` | `session_id`, `question` | `{reply}` | Friendly, grounded Q&A about the session (Session Assistant); ≤24 s |
+| `ask_session` | `session_id`, `question` | `{reply}` | Friendly, grounded Q&A about the session (Session Assistant); ≤24 s. A question starting with `@Block` is routed to `refine_block` |
+| `refine_block` | `session_id`, `block`, `instruction` | `{ok, block, mode}` or `{ok:false, error}` | Founder's preference for one BMC block: the block agent rewrites it, then the council re-assesses. `mode` = `rescore` before G2 (the 5 seats re-score that block only) or `retriage` after G2 (full council round, pilot summary and report refreshed). Runs in the background; one at a time per session; max 6 versions per block. Only with the user's own words |
 | `get_session_summary` | `session_id` | markdown | Lets WorkBuddy narrate results in chat |
 
 Tool parameters are **flat scalars/lists** (ADK/MCP pattern; avoid a lone model parameter).

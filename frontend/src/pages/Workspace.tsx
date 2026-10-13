@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import Canvas, { NodeState } from "../components/Canvas";
-import Feed from "../components/Feed";
+import Feed, { needsWork } from "../components/Feed";
 import RightPane from "../components/RightPane";
 import { AgentEvent, api, BMC_LABEL, Evidence, PHASE_LABEL, SessionDetail } from "../api";
 import { phaseClass } from "./Sessions";
@@ -34,7 +34,7 @@ function EvidenceList({ items }: { items: Evidence[] }) {
   );
 }
 
-function Drawer({ d, sel, onClose }: { d: SessionDetail; sel: string; onClose: () => void }) {
+function Drawer({ d, sel, onClose, onRefine }: { d: SessionDetail; sel: string; onClose: () => void; onRefine: (key: string) => void }) {
   let title = "";
   let body: JSX.Element | null = null;
   if (sel === "screen" && d.screen) {
@@ -63,13 +63,40 @@ function Drawer({ d, sel, onClose }: { d: SessionDetail; sel: string; onClose: (
       <h4>Evidence</h4><EvidenceList items={d.evidence.filter((e) => e.scope === "problem")} />
     </>);
   } else if (BMC_LABEL[sel]) {
-    const c = d.blocks.find((x) => x.key === sel)?.content ?? {};
-    title = BMC_LABEL[sel];
+    const b = d.blocks.find((x) => x.key === sel);
+    const c = b?.content ?? {};
+    const m = d.verdict?.block_means?.[sel];
+    const before = d.verdict?.previous?.block_means?.[sel];
+    const delta = m != null && before != null && m !== before ? m - before : null;
+    const busy = !!d.refining;
+    title = BMC_LABEL[sel] + ((b?.version ?? 1) > 1 ? ` · v${b?.version}` : "");
     body = (<>
+      {(m != null || d.refinable) && (
+        <div className="refine-bar">
+          {m != null && <span className={`schip ${m >= 4 ? "verified" : needsWork(d, sel) ? "refine" : "info"}`}>Council {m}/5</span>}
+          {delta != null && <span className={`schip ${delta > 0 ? "verified" : "refine"}`}>{delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}</span>}
+          {d.refinable && (
+            <button className="small primary" disabled={busy} onClick={() => onRefine(sel)}
+              title="Tell the agent your preference; the council re-assesses the block afterwards">
+              {d.refining?.key === sel ? "Refining…" : "✏️ Refine with my input"}
+            </button>
+          )}
+        </div>
+      )}
+      {b?.stale_reason && <div className="stale-note">🔗 <b>May need a look:</b> {b.stale_reason}</div>}
+      {b?.change_note && <div className="small"><b>Latest change:</b> {b.change_note}</div>}
       <p>{c.summary ?? "Not written yet."}</p>
       {c.items?.length ? <ul>{c.items.map((x, i) => <li key={i}>{x}</li>)}</ul> : null}
       {c.assumptions?.length ? <><h4>Assumptions to test</h4><ul className="small">{c.assumptions.map((x, i) => <li key={i}>{x}</li>)}</ul></> : null}
       <EvidenceList items={d.evidence.filter((e) => e.scope === sel)} />
+      {(b?.history?.length ?? 0) > 1 && (<>
+        <h4>Version history</h4>
+        <ol className="small history">
+          {b!.history!.map((h) => (
+            <li key={h.version}><b>v{h.version}</b> {h.instruction ? <>· you asked “{h.instruction}”{h.change_note ? <> → {h.change_note}</> : null}</> : "· first draft by the agent"}</li>
+          ))}
+        </ol>
+      </>)}
     </>);
   } else if (sel.startsWith("council_")) {
     const r = d.council.find((x) => `council_${x.seat}` === sel);
@@ -101,6 +128,7 @@ export default function Workspace() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [live, setLive] = useState<Record<string, NodeState>>({});
   const [sel, setSel] = useState<string>("");
+  const [mention, setMention] = useState<string>("");
   const refreshTimer = useRef<number | null>(null);
 
   const refresh = useCallback(() => { api.get(id).then(setD).catch(() => undefined); }, [id]);
@@ -117,7 +145,7 @@ export default function Workspace() {
       const ev: AgentEvent = JSON.parse(m.data);
       setEvents((xs) => (xs.length && xs[xs.length - 1].seq >= ev.seq ? xs : [...xs, ev].slice(-600)));
       if (ev.target) setLive((s) => ({ ...s, [ev.target!]: ACTIVE_KINDS.has(ev.kind) ? "thinking" : ev.kind === "error" ? "failed" : "done" }));
-      if (["done", "phase", "error", "fallback", "handoff", "summary", "approval", "thought"].includes(ev.kind)) scheduleRefresh();
+      if (["done", "phase", "error", "fallback", "handoff", "summary", "approval", "thought", "chat"].includes(ev.kind)) scheduleRefresh();
     };
     const poll = setInterval(refresh, 10000);
     return () => { es.close(); clearInterval(poll); };
@@ -135,7 +163,7 @@ export default function Workspace() {
         <Link className="hide-sm" to="/app"><button className="ghost">All sessions</button></Link>
       </TopBar>
       <div className="ws3">
-        <aside className="ws3-left"><Feed sessionId={d.id} events={events} running={running} /></aside>
+        <aside className="ws3-left"><Feed d={d} events={events} running={running || !!d.refining} mention={mention} onMention={setMention} /></aside>
         <section className="ws3-center">
           <div className="center-top">
             <div className="stepper">
@@ -156,7 +184,7 @@ export default function Workspace() {
           {d.error && <div className="pilot pilot-stop"><div className="pilot-line">{d.phase === "blocked" ? "🛑" : "😓"} {d.error}</div></div>}
           <div className="canvas-wrap">
             <Canvas d={d} live={live} selected={sel} onSelect={setSel} />
-            {sel && <Drawer d={d} sel={sel} onClose={() => setSel("")} />}
+            {sel && <Drawer d={d} sel={sel} onClose={() => setSel("")} onRefine={setMention} />}
             {!sel && <div className="canvas-hint">Tap any agent card to inspect its work</div>}
           </div>
         </section>
