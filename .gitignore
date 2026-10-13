@@ -31,7 +31,7 @@ frontend/dist/
 .firebase/
 
 # Models / caches
-models/
+/models/
 *.onnx
 *.safetensors
 
